@@ -2,6 +2,68 @@ import psycopg2
 import numpy as np
 import pickle
 
+
+def calc_distance_local_DB_predicted(testset):
+    '''
+    testset: a list containing the id of the mmir obj. in mmir_ground table
+    '''
+    item2idx = dict()
+    idx2item = dict()
+    for idx, item in enumerate(testset):
+        item2idx[item] = idx
+        idx2item[idx] = item
+
+    dist = np.zeros((len(testset), len(testset)))
+
+    for i in range(0, len(testset)):
+        for j in range(0, len(testset)):
+            if i == j:
+                dist[i][j] = np.inf
+
+    # set-up a postgres connection
+    conn = psycopg2.connect(database='Salvi', user='Salvi', password='sholock',
+                            host='localhost', port=5433)
+    dbcur = conn.cursor()
+    print("connection successful")
+    sql = dbcur.mogrify("""
+    SELECT 
+            A.mgid as Aid, B.mgid as Bid,
+            CONCAT(A.ubc::character varying, A.lbc::character varying, 
+	   A.gender::character varying) as Alabel,
+	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
+	   B.gender::character varying) as Blabel,
+	   (CASE WHEN A.ubc=B.ubc THEN 0
+                        ELSE 1
+                   END) + 
+            (CASE WHEN A.gender=B.gender THEN 0
+                        ELSE 3
+                   END) + 
+            (CASE WHEN A.lbc=B.lbc THEN 0
+                        ELSE 2
+                   END)
+            AS distance
+        FROM mmir_predicted A
+        JOIN mmir_predicted B 
+        ON 
+            A.mgid != B.mgid
+			and 
+			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
+			and 
+			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
+			and A.mgid in %s --(6, 2)
+			and B.mgid in %s --(5, 3)
+    --order by A.mgid, distance asc
+
+    --Limit 1000
+    """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
+    dbcur.execute(sql)
+    rows = dbcur.fetchall()
+
+    for item in rows:
+        dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+
+    return dist, item2idx, idx2item
+
 def calc_distance_local_DB(testset):
     '''
     testset: a list containing the id of the mmir obj. in mmir_ground table
@@ -52,15 +114,15 @@ def calc_distance_local_DB(testset):
 			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
 			and A.mgid in %s --(6, 2)
 			and B.mgid in %s --(5, 3)
---order by A.mgid, distance asc
+    --order by A.mgid, distance asc
 
---Limit 1000
+    --Limit 1000
     """, (tuple(testset), tuple(testset))) #(tuple(testset[0:3]), tuple(testset[2:5])))
     dbcur.execute(sql)
     rows = dbcur.fetchall()
     
     for item in rows:
-        print(item)
+        # print(item)
         dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
     
     return dist, item2idx, idx2item
@@ -183,7 +245,7 @@ def main():
     from datetime import datetime
 
     start = datetime.now()
-    dist, item2idx, idx2item = calc_distance_local_DB(testset)
+    # dist, item2idx, idx2item = calc_distance_local_DB(testset)
     end = datetime.now()
     print(end -  start)
 
