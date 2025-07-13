@@ -160,10 +160,10 @@ if __name__ == "__main__":
     NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
     SAVE_PR = CONFIG.get('save_pr', False)
     PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
+    dir = CONFIG.get('dataset_dir', None)
 
 
     # Load matrices and mappings for testdata
-    dir = "dataset - 06132025/"
     testset, item2idx, idx2item, dist, ground_dist = stt.read_dataset(dir+'testset', 
                                                                       dir+'test_distance_matrix', 
                                                                       dir+'predicted_test_distance_matrix')

@@ -11,9 +11,9 @@ with open('config.json', 'r') as f:
 which_db = config.get('db_host')
 db_settings = config.get(which_db)
 
-def calc_distance_local_DB(testset):
+def calc_distance_local_DB(testset, dbcur=None):
     '''
-    testset: a list containing the id of the mmir obj. in mmir_ground table
+    testset: a list containing the id of the mmir obj. in mmir_ground and mmir_predicted table
     '''
     item2idx = dict()
     idx2item = dict()
@@ -29,88 +29,100 @@ def calc_distance_local_DB(testset):
         for j in range(0, len(testset)):
             if i == j:
                 dist[i][j] = np.inf
+                predicted_dist[i][j] = np.inf
 
     print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
 
-    # Connect using the selected settings
-    conn = psycopg2.connect(**db_settings)
-    dbcur = conn.cursor()
-    print("connection successful")
-    sql = dbcur.mogrify("""
-    SELECT 
-            A.mgid as Aid, B.mgid as Bid,
-            CONCAT(A.ubc::character varying, A.lbc::character varying, 
-	   A.gender::character varying) as Alabel,
-	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
-	   B.gender::character varying) as Blabel,
-	   (CASE WHEN A.ubc=B.ubc THEN 0
-                        ELSE 1
-                   END) + 
-            (CASE WHEN A.gender=B.gender THEN 0
-                        ELSE 3
-                   END) + 
-            (CASE WHEN A.lbc=B.lbc THEN 0
-                        ELSE 2
-                   END)
-            AS distance
-        FROM mmir_ground A
-        JOIN mmir_ground B 
-        ON 
-            A.mgid != B.mgid
-			and 
-			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
-			and 
-			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
-			and A.mgid in %s --(6, 2)
-			and B.mgid in %s --(5, 3)
-    --order by A.mgid, distance asc
+    if dbcur is None:
+        conn = psycopg2.connect(**db_settings)
+        dbcur = conn.cursor()
+        print("connection successful")
+    try:
+        sql = dbcur.mogrify("""
+        SELECT 
+                A.mgid as Aid, B.mgid as Bid,
+                CONCAT(A.ubc::character varying, A.lbc::character varying, 
+        A.gender::character varying) as Alabel,
+        CONCAT(B.ubc::character varying, B.lbc::character varying, 
+        B.gender::character varying) as Blabel,
+        (CASE WHEN A.ubc=B.ubc THEN 0
+                            ELSE 1
+                    END) + 
+                (CASE WHEN A.gender=B.gender THEN 0
+                            ELSE 3
+                    END) + 
+                (CASE WHEN A.lbc=B.lbc THEN 0
+                            ELSE 2
+                    END)
+                AS distance
+            FROM mmir_ground A
+            JOIN mmir_ground B 
+            ON 
+                A.mgid != B.mgid
+                and 
+                A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
+                and 
+                B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
+                and A.mgid in %s --(6, 2)
+                and B.mgid in %s --(5, 3)
+        --order by A.mgid, distance asc
 
-    --Limit 1000
-    """, (tuple(testset), tuple(testset))) #(tuple(testset[0:3]), tuple(testset[2:5])))
-    dbcur.execute(sql)
-    rows = dbcur.fetchall()
-    
-    for item in rows:
-        # print(item)
-        dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+        --Limit 1000
+        """, (tuple(testset), tuple(testset))) #(tuple(testset[0:3]), tuple(testset[2:5])))
+        dbcur.execute(sql)
+        rows = dbcur.fetchall()
+        
+        for item in rows:
+            # print(item)
+            dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
 
 
-    sql = dbcur.mogrify("""
-    SELECT 
-            A.mgid as Aid, B.mgid as Bid,
-            CONCAT(A.ubc::character varying, A.lbc::character varying, 
-	   A.gender::character varying) as Alabel,
-	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
-	   B.gender::character varying) as Blabel,
-	   (CASE WHEN A.ubc=B.ubc THEN 0
-                        ELSE 1
-                   END) + 
-            (CASE WHEN A.gender=B.gender THEN 0
-                        ELSE 3
-                   END) + 
-            (CASE WHEN A.lbc=B.lbc THEN 0
-                        ELSE 2
-                   END)
-            AS distance
-        FROM mmir_predicted A
-        JOIN mmir_predicted B 
-        ON 
-            A.mgid != B.mgid
-			and 
-			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
-			and 
-			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
-			and A.mgid in %s --(6, 2)
-			and B.mgid in %s --(5, 3)
-    --order by A.mgid, distance asc
+        sql = dbcur.mogrify("""
+        SELECT 
+                A.mgid as Aid, B.mgid as Bid,
+                CONCAT(A.ubc::character varying, A.lbc::character varying, 
+        A.gender::character varying) as Alabel,
+        CONCAT(B.ubc::character varying, B.lbc::character varying, 
+        B.gender::character varying) as Blabel,
+        (CASE WHEN A.ubc=B.ubc THEN 0
+                            ELSE 1
+                    END) + 
+                (CASE WHEN A.gender=B.gender THEN 0
+                            ELSE 3
+                    END) + 
+                (CASE WHEN A.lbc=B.lbc THEN 0
+                            ELSE 2
+                    END)
+                AS distance
+            FROM mmir_predicted A
+            JOIN mmir_predicted B 
+            ON 
+                A.mgid != B.mgid
+                and 
+                A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
+                and 
+                B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
+                and A.mgid in %s --(6, 2)
+                and B.mgid in %s --(5, 3)
+        --order by A.mgid, distance asc
 
-    --Limit 1000
-    """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
-    dbcur.execute(sql)
-    rows = dbcur.fetchall()
+        --Limit 1000
+        """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
+        dbcur.execute(sql)
+        rows = dbcur.fetchall()
 
-    for item in rows:
-        predicted_dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+        for item in rows:
+            predicted_dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+
+    except (Exception, psycopg2.Error) as error :
+        print ("Error while fetching data from PostgreSQL", error)
+
+    finally:
+        #closing database connection.
+        if(conn):
+            dbcur.close()
+            conn.close()
+            print("PostgreSQL connection is closed")
     
     return dist, predicted_dist, item2idx, idx2item
 
@@ -119,14 +131,6 @@ def prepare_dataset():
     print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
 
     # Connect using the selected settings
-    # conn = psycopg2.connect(
-    #     database=db_settings['database'],
-    #     user=db_settings['user'],
-    #     password=db_settings['password'],
-    #     host=db_settings['host'],
-    #     port=db_settings['port']
-    # )
-    # even shorter version below
     conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
@@ -195,7 +199,7 @@ def prepare_dataset():
         from mmir_ground
         where ubc!= -1 and lbc!= -1 and ubc!= 100 and lbc!= 100 
         -- for protection against text attributes
-        --and ctype='untext'
+        -- and ctype='untext'
         group by ubc, lbc, gender
         order by freq desc
     )fullTable
@@ -216,7 +220,7 @@ def prepare_dataset():
             conn.close()
             print("PostgreSQL connection is closed")
 
-    return rows
+    return rows 
 
 def write_dataset(testset, item2idx, idx2item, name):
         with open(name+".pkl", "wb") as f:
@@ -254,7 +258,7 @@ def main():
     validset = [row[1] for row in rows if row[1]] # coz train is longer in length, tet column has null/none values
     print(len(validset))
     print(len(testset))
-    print(testset[1827])
+    # print(testset[1827])
 
     np.random.seed(42)
     #np.random.shuffle(testset) # need to shuffle before testing as all same class labels are concatanated one after another.
@@ -266,21 +270,22 @@ def main():
     end = datetime.now()
     print(end -  start)
 
-    # dir = "dataset - 06122025/"
-    # os.makedirs(dir, exist_ok=True)
-    # os.chdir(dir)
+    dir = "dataset - 06132025 - v2/"
+    os.makedirs(dir, exist_ok=True)
+    os.chdir(dir)
 
     texttestset = [row[5] for row in rows if row[5]]
     imagetestset = [row[3] for row in rows if row[3]]
     videotestset = [row[4] for row in rows if row[4]]
     
+    '''
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(testset)
     write_dataset(testset, item2idx, idx2item, 'testset')
     write_dataset(texttestset, item2idx, idx2item, 'texttestset')
     write_dataset(imagetestset, item2idx, idx2item, 'imagetestset')
     write_dataset(videotestset, item2idx, idx2item, 'videotestset')
     save_dist_matrices("test_distance_matrix", dist, predicted_dist)
-
+    
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(validset)
     write_dataset(validset, item2idx, idx2item, 'validset')
     save_dist_matrices("valid_distance_matrix", dist, predicted_dist)
@@ -288,6 +293,7 @@ def main():
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(trainset)
     write_dataset(trainset, item2idx, idx2item, 'trainset')
     save_dist_matrices("train_distance_matrix", dist, predicted_dist)
+    '''
     
     
 
