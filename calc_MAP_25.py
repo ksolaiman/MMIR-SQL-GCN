@@ -173,6 +173,10 @@ if __name__ == "__main__":
     testset = sorted(set(texttestset + imagetestset + videotestset))
     ground_dist, predicted_dist, item2idx, idx2item = stt.calc_distance_local_DB(testset)
 
+    ######## No need to read or write from below section ######
+    ######## as we will always be reading from database ######
+    ######## to avoid keyerror issue while reading from file ######
+    ###################################################################################
     # os.makedirs(dir, exist_ok=True)
     # os.chdir(dir)
     # stt.write_dataset(testset, item2idx, idx2item, 'testset')
@@ -187,9 +191,6 @@ if __name__ == "__main__":
     #                                                                   dir+'test_distance_matrix', 
     #                                                                   dir+'predicted_test_distance_matrix')
 
-    print("Loaded predicted distances:", predicted_dist.shape)
-    print("Loaded ground truth distances:", ground_dist.shape)
-
     # # Prepare dataset splits
     # # direct file reading, no more dataset access, or use above 4 lines
     # with open(dir+'texttestset'+".pkl", "rb") as f:
@@ -198,7 +199,11 @@ if __name__ == "__main__":
     #     imagetestset  = pickle.load(f)
     # with open(dir+'videotestset'+".pkl", "rb") as f:
     #     videotestset  = pickle.load(f)
+
+    ###################################################################################
         
+    print("Loaded predicted distances:", predicted_dist.shape)
+    print("Loaded ground truth distances:", ground_dist.shape)
     print("Test set sizes:")
     print(f"- Text: {len(texttestset)}")
     print(f"- Image: {len(imagetestset)}")
@@ -213,17 +218,18 @@ if __name__ == "__main__":
         (texttestset, texttestset, "Text->Text"),
         (videotestset, texttestset, "Video->Text"),
         (imagetestset, texttestset, "Image->Text"),
-        (texttestset + imagetestset + videotestset, texttestset, "All->Text"),
+        (texttestset, texttestset + imagetestset + videotestset,  "Text->All"),
         (videotestset, videotestset, "Video->Video"),
         (texttestset, videotestset, "Text->Video"),
         (imagetestset, videotestset, "Image->Video"),
-        (texttestset + imagetestset + videotestset, videotestset, "All->Video"),
+        (videotestset, texttestset + imagetestset + videotestset, "Video->All"),
         (imagetestset, imagetestset, "Image->Image"),
         (texttestset, imagetestset, "Text->Image"),
         (videotestset, imagetestset, "Video->Image"),
-        (texttestset + imagetestset + videotestset, imagetestset, "All->Image")
+        (imagetestset, texttestset + imagetestset + videotestset, "Image->All")
     ]
 
+    maps = []
     for queryset, targetset, label in EVAL_PAIRS:
         scores = fx_calc_map_label_detailed(
             db_items=targetset,
@@ -239,12 +245,16 @@ if __name__ == "__main__":
             # label=label.replace('->', '_')
         )
         print(f"{label}: MAP = {scores}")
+        maps.append(scores)
+
+    print(f"Mean MAP = {np.mean(maps)}")
 
     # if save_pr_curve_flag and pr_curve_dir and label:
     #         recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
     #         save_pr_curve(pr_curve_dir, label, recall_levels, mean_precision)
 
 
+    # calling the older fx_calc_map_label_detailed() for comparison
     dist = predicted_dist
     maps = []
     maps.append(cmac1.fx_calc_map_label_detailed(texttestset, texttestset, dist, ground_dist, item2idx, k = 0))         # !!
