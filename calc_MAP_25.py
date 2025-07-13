@@ -165,7 +165,7 @@ if __name__ == "__main__":
 
     np.random.seed(42)          # this random seed has no affect in MAP calculation below
                                 # but if you pass a seed to Database, it has an effect
-    rows = stt.prepare_dataset(random_seed=0.1237)
+    rows = stt.prepare_dataset(random_seed=0.1237)      # this seed has to be between 0 and 1
     testset = [row[2] for row in rows if row[2]]
     texttestset = [row[5] for row in rows if row[5]]
     imagetestset = [row[3] for row in rows if row[3]]
