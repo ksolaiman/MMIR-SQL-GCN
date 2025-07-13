@@ -3,6 +3,7 @@ import pickle
 import numpy as np
 import os
 import set_train_test_data_and_distance_matrix_from_mmir_ground as stt
+import calc_MAP_mac_1 as cmac1
 
 # Load config
 with open('config.json', 'r') as f:
@@ -160,35 +161,52 @@ if __name__ == "__main__":
     NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
     SAVE_PR = CONFIG.get('save_pr', False)
     PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
-    dir = CONFIG.get('dataset_dir', None)
+    # dir = CONFIG.get('dataset_dir', None)
+
+    np.random.seed(42)          
+    rows = stt.prepare_dataset()
+    testset = [row[2] for row in rows if row[2]]
+    texttestset = [row[5] for row in rows if row[5]]
+    imagetestset = [row[3] for row in rows if row[3]]
+    videotestset = [row[4] for row in rows if row[4]]
+    testset = sorted(set(texttestset + imagetestset + videotestset))
+    ground_dist, predicted_dist, item2idx, idx2item = stt.calc_distance_local_DB(testset)
+
+    # os.makedirs(dir, exist_ok=True)
+    # os.chdir(dir)
+    # stt.write_dataset(testset, item2idx, idx2item, 'testset')
+    # stt.write_dataset(texttestset, item2idx, idx2item, 'texttestset')
+    # stt.write_dataset(imagetestset, item2idx, idx2item, 'imagetestset')
+    # stt.write_dataset(videotestset, item2idx, idx2item, 'videotestset')
+    # stt.save_dist_matrices("test_distance_matrix", ground_dist, predicted_dist)
 
 
     # Load matrices and mappings for testdata
-    testset, item2idx, idx2item, dist, ground_dist = stt.read_dataset(dir+'testset', 
-                                                                      dir+'test_distance_matrix', 
-                                                                      dir+'predicted_test_distance_matrix')
+    # testset, item2idx, idx2item, ground_dist, predicted_dist = stt.read_dataset(dir+'testset', 
+    #                                                                   dir+'test_distance_matrix', 
+    #                                                                   dir+'predicted_test_distance_matrix')
 
-    print("Loaded predicted distances:", dist.shape)
+    print("Loaded predicted distances:", predicted_dist.shape)
     print("Loaded ground truth distances:", ground_dist.shape)
 
-    # Prepare dataset splits
-    # rows = stt.prepare_dataset()
-    # texttestset = [row[5] for row in rows if row[5]]
-    # imagetestset = [row[3] for row in rows if row[3]]
-    # videotestset = [row[4] for row in rows if row[4]]
-
-    # direct file reading, no more dataset access, or use above 4 lines
-    with open(dir+'texttestset'+".pkl", "rb") as f:
-            texttestset  = pickle.load(f)
-    with open(dir+'imagetestset'+".pkl", "rb") as f:
-            imagetestset  = pickle.load(f)
-    with open(dir+'videotestset'+".pkl", "rb") as f:
-            videotestset  = pickle.load(f)
-
+    # # Prepare dataset splits
+    # # direct file reading, no more dataset access, or use above 4 lines
+    # with open(dir+'texttestset'+".pkl", "rb") as f:
+    #     texttestset  = pickle.load(f)
+    # with open(dir+'imagetestset'+".pkl", "rb") as f:
+    #     imagetestset  = pickle.load(f)
+    # with open(dir+'videotestset'+".pkl", "rb") as f:
+    #     videotestset  = pickle.load(f)
+        
     print("Test set sizes:")
     print(f"- Text: {len(texttestset)}")
     print(f"- Image: {len(imagetestset)}")
     print(f"- Video: {len(videotestset)}")
+
+
+    for item in texttestset:
+        if item not in item2idx:
+            print('MISSING:', item)
 
     EVAL_PAIRS = [
         (texttestset, texttestset, "Text->Text"),
@@ -209,7 +227,7 @@ if __name__ == "__main__":
         scores = fx_calc_map_label_detailed(
             db_items=targetset,
             query_items=queryset,
-            dist=dist,
+            dist=predicted_dist,
             ground_dist=ground_dist,
             k=0,
             threshold=THRESHOLD,
@@ -224,3 +242,23 @@ if __name__ == "__main__":
     # if save_pr_curve_flag and pr_curve_dir and label:
     #         recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
     #         save_pr_curve(pr_curve_dir, label, recall_levels, mean_precision)
+
+
+    dist = predicted_dist
+    maps = []
+    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, texttestset, dist, ground_dist, item2idx, k = 0))         # !!
+    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, texttestset, dist, ground_dist, item2idx, k = 0))
+    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, texttestset, dist, ground_dist, item2idx, k = 0))
+    maps.append(cmac1.fx_calc_map_label_detailed(testset, texttestset, dist, ground_dist, item2idx, k = 0))
+    #
+    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, videotestset, dist, ground_dist, item2idx, k = 0))
+    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, videotestset, dist, ground_dist, item2idx, k = 0)) #
+    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, videotestset, dist, ground_dist, item2idx, k = 0))
+    maps.append(cmac1.fx_calc_map_label_detailed(testset, videotestset, dist, ground_dist, item2idx, k = 0))
+    #
+    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, imagetestset, dist, ground_dist, item2idx, k = 0))
+    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, imagetestset, dist, ground_dist, item2idx, k = 0))  #
+    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, imagetestset, dist, ground_dist, item2idx, k = 0))   #
+    maps.append(cmac1.fx_calc_map_label_detailed(testset, imagetestset, dist, ground_dist, item2idx, k = 0))
+
+    print(np.mean(maps))
