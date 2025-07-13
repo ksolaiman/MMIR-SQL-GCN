@@ -2,23 +2,17 @@ import json
 import pickle
 import numpy as np
 import os
+import set_train_test_data_from_mmir_ground as stt
 
 # Load config
 with open('config.json', 'r') as f:
     CONFIG = json.load(f)
 
-DATA_SOURCE = CONFIG.get('data_source', 'local')
-THRESHOLD = CONFIG.get('threshold', 3)
+DATA_SOURCE = CONFIG.get('database_source', 'local')        # second param is default
+THRESHOLD = CONFIG.get('relevance_threshold', 3)
 NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
 
 print(f"Config loaded: {CONFIG}")
-
-# Dynamic import of data preparation module
-if DATA_SOURCE == 'local':
-    import set_train_test_data_and_distance_matrix_from_mmir_ground_w_localDB as stt
-else:
-    import set_train_test_data_from_mmir_ground as stt
-
 
 def fx_calc_map_label_detailed(
     db_items, query_items, dist, ground_dist, k,
