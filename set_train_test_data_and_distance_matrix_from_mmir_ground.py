@@ -231,6 +231,20 @@ def save_dist_matrices(filename, dist, predicted_dist):
             pickle.dump(dist, f)
     with open("predicted_"+filename+".pkl", "wb") as f:
             pickle.dump(predicted_dist, f)
+
+def read_dataset(name, filename, predicted_matrix_filename):
+    with open(name+".pkl", "rb") as f:
+        testset  = pickle.load(f)
+    with open(name+"item2idx.pkl", "rb") as f:
+        testsetitem2idx = pickle.load(f)
+    with open(name+"idx2item.pkl", "rb") as f:
+        testsetidx2item = pickle.load(f)
+    with open(filename+".pkl", "rb") as f:
+        distance_matrix = pickle.load(f)
+    with open(predicted_matrix_filename+".pkl", "rb") as f:
+        predicted_distance_matrix = pickle.load(f)
+
+    return testset, testsetidx2item, testsetidx2item, distance_matrix, predicted_distance_matrix
     
 def main():
     rows = prepare_dataset()
@@ -256,9 +270,15 @@ def main():
     # os.makedirs(dir, exist_ok=True)
     # os.chdir(dir)
 
-    '''
+    texttestset = [row[5] for row in rows if row[5]]
+    imagetestset = [row[3] for row in rows if row[3]]
+    videotestset = [row[4] for row in rows if row[4]]
+    
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(testset)
     write_dataset(testset, item2idx, idx2item, 'testset')
+    write_dataset(texttestset, item2idx, idx2item, 'texttestset')
+    write_dataset(imagetestset, item2idx, idx2item, 'imagetestset')
+    write_dataset(videotestset, item2idx, idx2item, 'videotestset')
     save_dist_matrices("test_distance_matrix", dist, predicted_dist)
 
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(validset)
@@ -268,7 +288,7 @@ def main():
     dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(trainset)
     write_dataset(trainset, item2idx, idx2item, 'trainset')
     save_dist_matrices("train_distance_matrix", dist, predicted_dist)
-    '''
+    
     
 
 if __name__ == "__main__":
