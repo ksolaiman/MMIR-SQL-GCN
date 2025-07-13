@@ -1,6 +1,7 @@
 import psycopg2
 import numpy as np
 import pickle
+import json
 
 
 def calc_distance_local_DB_predicted(testset):
@@ -20,9 +21,17 @@ def calc_distance_local_DB_predicted(testset):
             if i == j:
                 dist[i][j] = np.inf
 
-    # set-up a postgres connection
-    conn = psycopg2.connect(database='Salvi', user='Salvi', password='sholock',
-                            host='localhost', port=5433)
+    # Load DB config
+    with open('db_config.json', 'r') as f:
+        config = json.load(f)
+
+    which_db = config.get('use')
+    db_settings = config.get(which_db)
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
     sql = dbcur.mogrify("""
@@ -82,9 +91,17 @@ def calc_distance_local_DB(testset):
             if i == j:
                 dist[i][j] = np.inf
 
-    # set-up a postgres connection
-    conn = psycopg2.connect(database='Salvi', user='Salvi', password='sholock',
-                            host='localhost', port=5433)
+    # Load DB config
+    with open('db_config.json', 'r') as f:
+        config = json.load(f)
+
+    which_db = config.get('use')
+    db_settings = config.get(which_db)
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
     sql = dbcur.mogrify("""
@@ -128,9 +145,25 @@ def calc_distance_local_DB(testset):
     return dist, item2idx, idx2item
 
 def prepare_dataset():
-    # set-up a postgres connection
-    conn = psycopg2.connect(database='Salvi', user='Salvi',password='sholock',
-                                host='localhost', port=5433)
+    # Load DB config
+    with open('db_config.json', 'r') as f:
+        config = json.load(f)
+
+    which_db = config.get('use')
+    db_settings = config.get(which_db)
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    # conn = psycopg2.connect(
+    #     database=db_settings['database'],
+    #     user=db_settings['user'],
+    #     password=db_settings['password'],
+    #     host=db_settings['host'],
+    #     port=db_settings['port']
+    # )
+    # even shorter version below
+    conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
     try:
