@@ -135,7 +135,8 @@ def prepare_dataset(random_seed=0.1234):
     dbcur = conn.cursor()
     print("connection successful")
     try:
-        dbcur.execute("set seed to %s;", (random_seed,))
+        dbcur.execute("set seed to %s;", (random_seed,))    # had to separate as now it takes argument and 
+                                # mutliple line argument parsing is not great for sql query
         sql = dbcur.mogrify("""
         -- set seed to %s;
         select --unnest(itest), unnest(itrain) --, 
