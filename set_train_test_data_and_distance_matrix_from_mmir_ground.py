@@ -126,7 +126,7 @@ def calc_distance_local_DB(testset, dbcur=None):
     
     return dist, predicted_dist, item2idx, idx2item
 
-def prepare_dataset():
+def prepare_dataset(random_seed=0.1234):
 
     print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
 
@@ -135,8 +135,9 @@ def prepare_dataset():
     dbcur = conn.cursor()
     print("connection successful")
     try:
+        dbcur.execute("set seed to %s;", (random_seed,))
         sql = dbcur.mogrify("""
-        set seed to 0.1234;
+        -- set seed to %s;
         select --unnest(itest), unnest(itrain) --, 
         --itrain || vtrain || ttrain as trainsetByClass, array_length(itrain || vtrain || ttrain, 1), label
         unnest(itrain || vtrain || ttrain) as trainset,
