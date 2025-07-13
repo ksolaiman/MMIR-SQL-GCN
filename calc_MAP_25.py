@@ -2,7 +2,7 @@ import json
 import pickle
 import numpy as np
 import os
-import set_train_test_data_from_mmir_ground as stt
+import set_train_test_data_and_distance_matrix_from_mmir_ground as stt
 
 # Load config
 with open('config.json', 'r') as f:
@@ -14,9 +14,20 @@ NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
 
 print(f"Config loaded: {CONFIG}")
 
+
+def load_config(config_path='config.json'):
+    with open(config_path, 'r') as f:
+        return json.load(f)
+
+def load_pickle(file):
+    with open(file, 'rb') as f:
+        return pickle.load(f)
+
+
 def fx_calc_map_label_detailed(
     db_items, query_items, dist, ground_dist, k,
-    threshold, normalize_ap, item2idx
+    threshold, normalize_ap, item2idx,
+    save_pr_curve_flag=False, pr_curve_dir=None, label=None
 ):
     """
     Compute Mean Average Precision (MAP) for retrieval.
@@ -142,34 +153,74 @@ def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label):
         pickle.dump(mean_precision, f)
 
 
+if __name__ == "__main__":
+    CONFIG = load_config()
+    DATA_SOURCE = CONFIG.get('database_source', 'local')
+    THRESHOLD = CONFIG.get('relevance_threshold', 3)
+    NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
+    SAVE_PR = CONFIG.get('save_pr', False)
+    PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
 
 
+    # Load matrices and mappings for testdata
+    dir = "dataset - 06132025/"
+    testset, item2idx, idx2item, dist, ground_dist = stt.read_dataset(dir+'testset', 
+                                                                      dir+'test_distance_matrix', 
+                                                                      dir+'predicted_test_distance_matrix')
 
+    print("Loaded predicted distances:", dist.shape)
+    print("Loaded ground truth distances:", ground_dist.shape)
 
-# Load matrices
-with open("predicted_test_distance_matrix.pkl", "rb") as f:
-    dist = pickle.load(f)
-print("Loaded predicted distances:", dist.shape)
+    # Prepare dataset splits
+    # rows = stt.prepare_dataset()
+    # texttestset = [row[5] for row in rows if row[5]]
+    # imagetestset = [row[3] for row in rows if row[3]]
+    # videotestset = [row[4] for row in rows if row[4]]
 
-with open("test_distance_matrix.pkl", "rb") as f:
-    ground_dist = pickle.load(f)
-print("Loaded ground truth distances:", ground_dist.shape)
+    # direct file reading, no more dataset access, or use above 4 lines
+    with open(dir+'texttestset'+".pkl", "rb") as f:
+            texttestset  = pickle.load(f)
+    with open(dir+'imagetestset'+".pkl", "rb") as f:
+            imagetestset  = pickle.load(f)
+    with open(dir+'videotestset'+".pkl", "rb") as f:
+            videotestset  = pickle.load(f)
 
-# Load mappings
-with open("testsetitem2idx.pkl", "rb") as f:
-    item2idx = pickle.load(f)
+    print("Test set sizes:")
+    print(f"- Text: {len(texttestset)}")
+    print(f"- Image: {len(imagetestset)}")
+    print(f"- Video: {len(videotestset)}")
 
-with open("testsetidx2item.pkl", "rb") as f:
-    idx2item = pickle.load(f)
+    EVAL_PAIRS = [
+        (texttestset, texttestset, "Text->Text"),
+        (videotestset, texttestset, "Video->Text"),
+        (imagetestset, texttestset, "Image->Text"),
+        (texttestset + imagetestset + videotestset, texttestset, "All->Text"),
+        (videotestset, videotestset, "Video->Video"),
+        (texttestset, videotestset, "Text->Video"),
+        (imagetestset, videotestset, "Image->Video"),
+        (texttestset + imagetestset + videotestset, videotestset, "All->Video"),
+        (imagetestset, imagetestset, "Image->Image"),
+        (texttestset, imagetestset, "Text->Image"),
+        (videotestset, imagetestset, "Video->Image"),
+        (texttestset + imagetestset + videotestset, imagetestset, "All->Image")
+    ]
 
-# Prepare dataset splits
-rows = stt.prepare_dataset()
+    for queryset, targetset, label in EVAL_PAIRS:
+        scores = fx_calc_map_label_detailed(
+            db_items=targetset,
+            query_items=queryset,
+            dist=dist,
+            ground_dist=ground_dist,
+            k=0,
+            threshold=THRESHOLD,
+            normalize_ap=NORMALIZE_AP,
+            item2idx=item2idx,
+            # save_pr_curve_flag=SAVE_PR,
+            # pr_curve_dir=PR_DIR,
+            # label=label.replace('->', '_')
+        )
+        print(f"{label}: MAP = {scores}")
 
-texttestset = [row[5] for row in rows if row[5]]
-imagetestset = [row[3] for row in rows if row[3]]
-videotestset = [row[4] for row in rows if row[4]]
-
-print("Test set sizes:")
-print(f"- Text: {len(texttestset)}")
-print(f"- Image: {len(imagetestset)}")
-print(f"- Video: {len(videotestset)}")
+    # if save_pr_curve_flag and pr_curve_dir and label:
+    #         recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
+    #         save_pr_curve(pr_curve_dir, label, recall_levels, mean_precision)
