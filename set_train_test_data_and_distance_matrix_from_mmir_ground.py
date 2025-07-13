@@ -1,8 +1,78 @@
 import psycopg2
 import numpy as np
 import pickle
+import json
 
-def calc_distance(testset):
+# Load DB config
+with open('config.json', 'r') as f:
+    config = json.load(f)
+
+which_db = config.get('db_host')
+db_settings = config.get(which_db)
+
+def calc_distance_local_DB_predicted(testset):
+    '''
+    testset: a list containing the id of the mmir obj. in mmir_ground table
+    '''
+    item2idx = dict()
+    idx2item = dict()
+    for idx, item in enumerate(testset):
+        item2idx[item] = idx
+        idx2item[idx] = item
+
+    dist = np.zeros((len(testset), len(testset)))
+
+    for i in range(0, len(testset)):
+        for j in range(0, len(testset)):
+            if i == j:
+                dist[i][j] = np.inf
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    conn = psycopg2.connect(**db_settings)
+    dbcur = conn.cursor()
+    print("connection successful")
+    sql = dbcur.mogrify("""
+    SELECT 
+            A.mgid as Aid, B.mgid as Bid,
+            CONCAT(A.ubc::character varying, A.lbc::character varying, 
+	   A.gender::character varying) as Alabel,
+	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
+	   B.gender::character varying) as Blabel,
+	   (CASE WHEN A.ubc=B.ubc THEN 0
+                        ELSE 1
+                   END) + 
+            (CASE WHEN A.gender=B.gender THEN 0
+                        ELSE 3
+                   END) + 
+            (CASE WHEN A.lbc=B.lbc THEN 0
+                        ELSE 2
+                   END)
+            AS distance
+        FROM mmir_predicted A
+        JOIN mmir_predicted B 
+        ON 
+            A.mgid != B.mgid
+			and 
+			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
+			and 
+			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
+			and A.mgid in %s --(6, 2)
+			and B.mgid in %s --(5, 3)
+    --order by A.mgid, distance asc
+
+    --Limit 1000
+    """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
+    dbcur.execute(sql)
+    rows = dbcur.fetchall()
+
+    for item in rows:
+        dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+
+    return dist, item2idx, idx2item
+
+def calc_distance_local_DB(testset):
     '''
     testset: a list containing the id of the mmir obj. in mmir_ground table
     '''
@@ -18,17 +88,12 @@ def calc_distance(testset):
     for i in range(0, len(testset)):
         for j in range(0, len(testset)):
             if i == j:
-                dist[i][j] = np.inf 
-    
-#     sql = dbcur.mogrify("""
-#     select mgid from mmir_ground
-#     where mgid in %s""", (tuple(testset),) ) # you need a comma to make it tuple -_-, else string formatting error for single item
-#     dbcur.execute(sql)
-#     rows = dbcur.fetchall() 
-#     print(len(rows))
-    # set-up a postgres connection
-    conn = psycopg2.connect(database='ng', user='ngadmin',password='stonebra',
-                                host='146.148.89.5', port=5432)
+                dist[i][j] = np.inf
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
     sql = dbcur.mogrify("""
@@ -58,23 +123,33 @@ def calc_distance(testset):
 			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
 			and A.mgid in %s --(6, 2)
 			and B.mgid in %s --(5, 3)
---order by A.mgid, distance asc
+    --order by A.mgid, distance asc
 
---Limit 1000
+    --Limit 1000
     """, (tuple(testset), tuple(testset))) #(tuple(testset[0:3]), tuple(testset[2:5])))
     dbcur.execute(sql)
     rows = dbcur.fetchall()
     
     for item in rows:
-        print(item)
+        # print(item)
         dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
     
     return dist, item2idx, idx2item
 
 def prepare_dataset():
-    # set-up a postgres connection
-    conn = psycopg2.connect(database='ng', user='ngadmin',password='stonebra',
-                                host='146.148.89.5', port=5432)
+
+    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
+
+    # Connect using the selected settings
+    # conn = psycopg2.connect(
+    #     database=db_settings['database'],
+    #     user=db_settings['user'],
+    #     password=db_settings['password'],
+    #     host=db_settings['host'],
+    #     port=db_settings['port']
+    # )
+    # even shorter version below
+    conn = psycopg2.connect(**db_settings)
     dbcur = conn.cursor()
     print("connection successful")
     try:
@@ -189,9 +264,10 @@ def main():
     from datetime import datetime
 
     start = datetime.now()
-    dist, item2idx, idx2item = calc_distance(testset)
+    # dist, item2idx, idx2item = calc_distance_local_DB(testset)
     end = datetime.now()
     print(end -  start)
+
     '''
     write_dataset(testset, item2idx, idx2item, 'testset')
     with open("test_distance_matrix.pkl", "wb") as f:
