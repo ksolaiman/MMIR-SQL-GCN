@@ -2,6 +2,7 @@ import psycopg2
 import numpy as np
 import pickle
 import json
+import os
 
 # Load DB config
 with open('config.json', 'r') as f:
@@ -9,68 +10,6 @@ with open('config.json', 'r') as f:
 
 which_db = config.get('db_host')
 db_settings = config.get(which_db)
-
-def calc_distance_local_DB_predicted(testset):
-    '''
-    testset: a list containing the id of the mmir obj. in mmir_ground table
-    '''
-    item2idx = dict()
-    idx2item = dict()
-    for idx, item in enumerate(testset):
-        item2idx[item] = idx
-        idx2item[idx] = item
-
-    dist = np.zeros((len(testset), len(testset)))
-
-    for i in range(0, len(testset)):
-        for j in range(0, len(testset)):
-            if i == j:
-                dist[i][j] = np.inf
-
-    print(f"Connecting to {which_db} database at {db_settings['host']}:{db_settings['port']}")
-
-    # Connect using the selected settings
-    conn = psycopg2.connect(**db_settings)
-    dbcur = conn.cursor()
-    print("connection successful")
-    sql = dbcur.mogrify("""
-    SELECT 
-            A.mgid as Aid, B.mgid as Bid,
-            CONCAT(A.ubc::character varying, A.lbc::character varying, 
-	   A.gender::character varying) as Alabel,
-	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
-	   B.gender::character varying) as Blabel,
-	   (CASE WHEN A.ubc=B.ubc THEN 0
-                        ELSE 1
-                   END) + 
-            (CASE WHEN A.gender=B.gender THEN 0
-                        ELSE 3
-                   END) + 
-            (CASE WHEN A.lbc=B.lbc THEN 0
-                        ELSE 2
-                   END)
-            AS distance
-        FROM mmir_predicted A
-        JOIN mmir_predicted B 
-        ON 
-            A.mgid != B.mgid
-			and 
-			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
-			and 
-			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
-			and A.mgid in %s --(6, 2)
-			and B.mgid in %s --(5, 3)
-    --order by A.mgid, distance asc
-
-    --Limit 1000
-    """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
-    dbcur.execute(sql)
-    rows = dbcur.fetchall()
-
-    for item in rows:
-        dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
-
-    return dist, item2idx, idx2item
 
 def calc_distance_local_DB(testset):
     '''
@@ -83,6 +22,7 @@ def calc_distance_local_DB(testset):
         idx2item[idx]=item
         
     dist = np.zeros((len(testset), len(testset)))
+    predicted_dist = np.zeros((len(testset), len(testset)))
     print(dist.shape)
     
     for i in range(0, len(testset)):
@@ -133,8 +73,46 @@ def calc_distance_local_DB(testset):
     for item in rows:
         # print(item)
         dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
+
+
+    sql = dbcur.mogrify("""
+    SELECT 
+            A.mgid as Aid, B.mgid as Bid,
+            CONCAT(A.ubc::character varying, A.lbc::character varying, 
+	   A.gender::character varying) as Alabel,
+	   CONCAT(B.ubc::character varying, B.lbc::character varying, 
+	   B.gender::character varying) as Blabel,
+	   (CASE WHEN A.ubc=B.ubc THEN 0
+                        ELSE 1
+                   END) + 
+            (CASE WHEN A.gender=B.gender THEN 0
+                        ELSE 3
+                   END) + 
+            (CASE WHEN A.lbc=B.lbc THEN 0
+                        ELSE 2
+                   END)
+            AS distance
+        FROM mmir_predicted A
+        JOIN mmir_predicted B 
+        ON 
+            A.mgid != B.mgid
+			and 
+			A.ubc!= -1 and A.lbc!= -1 and A.ubc!= 100 and A.lbc!= 100
+			and 
+			B.ubc!= -1 and B.lbc!= -1 and B.ubc!= 100 and B.lbc!= 100
+			and A.mgid in %s --(6, 2)
+			and B.mgid in %s --(5, 3)
+    --order by A.mgid, distance asc
+
+    --Limit 1000
+    """, (tuple(testset), tuple(testset)))  # (tuple(testset[0:3]), tuple(testset[2:5])))
+    dbcur.execute(sql)
+    rows = dbcur.fetchall()
+
+    for item in rows:
+        predicted_dist[item2idx[item[0]]][item2idx[item[1]]] = item[4]
     
-    return dist, item2idx, idx2item
+    return dist, predicted_dist, item2idx, idx2item
 
 def prepare_dataset():
 
@@ -247,6 +225,12 @@ def write_dataset(testset, item2idx, idx2item, name):
             pickle.dump(item2idx, f)
         with open(name+"idx2item.pkl", "wb") as f:
             pickle.dump(idx2item, f)
+
+def save_dist_matrices(filename, dist, predicted_dist):
+    with open(filename+".pkl", "wb") as f:
+            pickle.dump(dist, f)
+    with open("predicted_"+filename+".pkl", "wb") as f:
+            pickle.dump(predicted_dist, f)
     
 def main():
     rows = prepare_dataset()
@@ -258,7 +242,7 @@ def main():
     print(len(testset))
     print(testset[1827])
 
-    #np.random.seed(42)
+    np.random.seed(42)
     #np.random.shuffle(testset) # need to shuffle before testing as all same class labels are concatanated one after another.
 
     from datetime import datetime
@@ -268,22 +252,24 @@ def main():
     end = datetime.now()
     print(end -  start)
 
+    # dir = "dataset - 06122025/"
+    # os.makedirs(dir, exist_ok=True)
+    # os.chdir(dir)
+
     '''
+    dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(testset)
     write_dataset(testset, item2idx, idx2item, 'testset')
-    with open("test_distance_matrix.pkl", "wb") as f:
-            pickle.dump(dist, f)
+    save_dist_matrices("test_distance_matrix", dist, predicted_dist)
 
-    dist, item2idx, idx2item = calc_distance(validset)
+    dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(validset)
     write_dataset(validset, item2idx, idx2item, 'validset')
+    save_dist_matrices("valid_distance_matrix", dist, predicted_dist)
 
-    with open("valid_distance_matrix.pkl", "wb") as f:
-            pickle.dump(dist, f)
-
-    dist, item2idx, idx2item = calc_distance(trainset)
+    dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(trainset)
     write_dataset(trainset, item2idx, idx2item, 'trainset')
-    with open("train_distance_matrix.pkl", "wb") as f:
-            pickle.dump(dist, f)
+    save_dist_matrices("train_distance_matrix", dist, predicted_dist)
     '''
+    
 
 if __name__ == "__main__":
     main()
