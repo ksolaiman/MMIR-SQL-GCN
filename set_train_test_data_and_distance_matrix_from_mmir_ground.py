@@ -250,7 +250,7 @@ def read_dataset(name, filename, predicted_matrix_filename):
     with open(predicted_matrix_filename+".pkl", "rb") as f:
         predicted_distance_matrix = pickle.load(f)
 
-    return testset, testsetidx2item, testsetidx2item, distance_matrix, predicted_distance_matrix
+    return testset, testsetitem2idx, testsetidx2item, distance_matrix, predicted_distance_matrix
     
 def main():
     rows = prepare_dataset()
