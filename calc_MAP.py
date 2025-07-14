@@ -152,55 +152,28 @@ def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label, k=None):
     with open(f"{outdir}/{label}{suffix}_precision.pkl", "wb") as f:
         pickle.dump(mean_precision, f)
 
-
-if __name__ == "__main__":
-    # --------------------------------------------------------
-    # CONFIG
-    # --------------------------------------------------------
-    CONFIG = utils.load_config()
-    DATA_SOURCE = CONFIG.get('database_source', 'local')
-    THRESHOLD = CONFIG.get('relevance_threshold', 3)
-    NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
-    SAVE_PR = CONFIG.get('save_pr', False)
-    PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
-    DATASET_DIR = CONFIG.get('dataset_dir', "dataset")
-    K_VALUES = CONFIG.get('k_values', 0)
-
+def evaluate_model_MAP(
+    model_name,
+    all_data,
+    test_predicted_dist,
+    test_ground_dist,
+    test_item2idx,
+    K_VALUES,
+    THRESHOLD,
+    NORMALIZE_AP,
+    SAVE_PR,
+    PR_DIR
+):
     # --------------------------------------------------------
     # RESULTS_SAVING_DIRECTORY
     # --------------------------------------------------------
     timestamp = datetime.now().strftime("%m%d%Y%H%M")
-    results_saving_dir = PR_DIR+'/EARS/'+timestamp              # PR_DIR + model_name + timestamp
-
-    # --------------------------------------------------------
-    # LOAD test splits from dataset folder
-    # Note: we don't re-access DB or re-prepare splits anymore.
-    # These IDs were generated once and saved under DATASET_DIR.
-    # --------------------------------------------------------
-    all_data = stt.load_all_splits(DATASET_DIR)
+    results_saving_dir = PR_DIR+'/'+model_name+'/'+timestamp              # PR_DIR + model_name + timestamp
 
     testset = all_data['testset']
     texttestset = all_data['text_testset']
     imagetestset = all_data['image_testset']
     videotestset = all_data['video_testset']
-
-    print("\n Loaded test split IDs from disk:")
-    print(f"- Combined testset size: {len(testset)}")
-    print(f"- Text testset: {len(texttestset)}")
-    print(f"- Image testset: {len(imagetestset)}")
-    print(f"- Video testset: {len(videotestset)}")
-
-    # --------------------------------------------------------
-    # LOAD pre-saved distance matrices and mappings for testset
-    # These were calculated and saved separately already.
-    # --------------------------------------------------------
-    test_ground_dist, test_predicted_dist, test_item2idx, test_idx2item = stt.load_dist_matrices(
-        "test", base_dir=DATASET_DIR
-    )
-
-    print("\n Loaded test distance matrices from disk:")
-    print(f"- Ground truth matrix shape: {test_ground_dist.shape}")
-    print(f"- Predicted matrix shape: {test_predicted_dist.shape}")
 
     EVAL_PAIRS = [
         (texttestset, texttestset, "Text->Text"),
@@ -270,3 +243,55 @@ if __name__ == "__main__":
     # --------------------------------------------------------
     # MAP calculation completed
     # --------------------------------------------------------
+
+
+if __name__ == "__main__":
+    # --------------------------------------------------------
+    # CONFIG
+    # --------------------------------------------------------
+    CONFIG = utils.load_config()
+    DATA_SOURCE = CONFIG.get('database_source', 'local')
+    THRESHOLD = CONFIG.get('relevance_threshold', 3)
+    NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
+    SAVE_PR = CONFIG.get('save_pr', False)                  # or just say, true or false, easy change
+    PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
+    DATASET_DIR = CONFIG.get('dataset_dir', "dataset")
+    K_VALUES = CONFIG.get('k_values', 0)
+
+    # --------------------------------------------------------
+    # LOAD test splits from dataset folder
+    # Note: we don't re-access DB or re-prepare splits anymore.
+    # These IDs were generated once and saved under DATASET_DIR.
+    # --------------------------------------------------------
+    all_data = stt.load_all_splits(DATASET_DIR)
+
+    testset = all_data['testset']
+    texttestset = all_data['text_testset']
+    imagetestset = all_data['image_testset']
+    videotestset = all_data['video_testset']
+
+    print("\n Loaded test split IDs from disk:")
+    print(f"- Combined testset size: {len(testset)}")
+    print(f"- Text testset: {len(texttestset)}")
+    print(f"- Image testset: {len(imagetestset)}")
+    print(f"- Video testset: {len(videotestset)}")
+
+    # --------------------------------------------------------
+    # LOAD pre-saved distance matrices and mappings for testset
+    # These were calculated and saved separately already.
+    # test_ground_dist is same for all models
+    # --------------------------------------------------------
+    test_ground_dist, EARS_test_predicted_dist, test_item2idx, test_idx2item = stt.load_dist_matrices(
+        "test", base_dir=DATASET_DIR
+    )
+
+    print("\n Loaded test distance matrices from disk:")
+    print(f"- Ground truth matrix shape: {test_ground_dist.shape}")
+    print(f"- Predicted matrix shape: {EARS_test_predicted_dist.shape}")
+
+
+    evaluate_model_MAP('EARS', all_data, EARS_test_predicted_dist,
+                       test_ground_dist, test_item2idx,
+                       K_VALUES, THRESHOLD, NORMALIZE_AP, SAVE_PR, PR_DIR)
+
+    
