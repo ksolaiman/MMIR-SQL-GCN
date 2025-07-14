@@ -1,29 +1,21 @@
 import json
-import pickle
+import utils
 import numpy as np
 import os
-import set_train_test_data_and_distance_matrix_from_mmir_ground as stt
+import set_train_test_data_and_distance_matrix as stt
 import calc_MAP_mac_1 as cmac1
+from datetime import datetime
+import pickle
 
-# Load config
-with open('config.json', 'r') as f:
-    CONFIG = json.load(f)
+# # Load config
+# with open('config.json', 'r') as f:
+#     CONFIG = json.load(f)
 
-DATA_SOURCE = CONFIG.get('database_source', 'local')        # second param is default
-THRESHOLD = CONFIG.get('relevance_threshold', 3)
-NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
+# DATA_SOURCE = CONFIG.get('database_source', 'local')        # second param is default
+# THRESHOLD = CONFIG.get('relevance_threshold', 3)
+# NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
 
-print(f"Config loaded: {CONFIG}")
-
-
-def load_config(config_path='config.json'):
-    with open(config_path, 'r') as f:
-        return json.load(f)
-
-def load_pickle(file):
-    with open(file, 'rb') as f:
-        return pickle.load(f)
-
+# print(f"Config loaded: {CONFIG}")
 
 def fx_calc_map_label_detailed(
     db_items, query_items, dist, ground_dist, k,
@@ -62,7 +54,7 @@ def fx_calc_map_label_detailed(
     trunc_dist = dist[np.ix_(query_indices, db_indices)]
     trunc_gt = ground_dist[np.ix_(query_indices, db_indices)]
 
-    # Sort distances to get ranking
+    # Sort distances to get ranking; Returns the sorted indices
     ord = trunc_dist.argsort(1)
 
     # Handle special k values
@@ -93,18 +85,22 @@ def fx_calc_map_label_detailed(
             r = 0.0
             total_predicted_relevant = 0
 
-            for j in range(_k):
-                if trunc_dist[i][predicted_order[j]] < threshold:
+            for j in range(_k):                                     # Iterate over the top-k retrieved (predicted) items for this query (i)
+                if trunc_dist[i][predicted_order[j]] < threshold:   # Predicted item's (j) distance for this query (i) is below threshold: model considers this retrieved item relevant
                     total_predicted_relevant += 1
-                    if trunc_gt[i][predicted_order[j]] < threshold:
+                    if trunc_gt[i][predicted_order[j]] < threshold: # Ground-truth distance for this item (j) for this query (i)  is also below threshold: this is a true positive
                         r += 1
-                        p += (r / (j + 1))
+                        p += (r / (j + 1))                          # Accumulate precision at this rank (correct so far / rank position)
 
                 if total_predicted_relevant > 0:
                     precision[i, j] = (r / total_predicted_relevant)
                 else:
                     precision[i, j] = 0.0
                 recall[i, j] = (r / relAll)
+
+            # After this loop:
+            # r      = number of true positives retrieved for this query (correctly predicted relevant items)
+            # relAll = total number of relevant items in ground truth for this query
 
             # Apply chosen normalization scheme
             if r > 0:
@@ -114,6 +110,10 @@ def fx_calc_map_label_detailed(
                     _res.append(p / relAll)
             else:
                 _res.append(0)
+
+        if save_pr_curve_flag and pr_curve_dir and label:
+            recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
+            save_pr_curve_to_disk(recall_levels, mean_precision, pr_curve_dir, label)
 
         map_score = np.mean(_res)
         print(f"MAP@{_k}: {map_score:.4f}")
@@ -147,6 +147,7 @@ def compute_interpolated_pr_curve(precision, recall, n_points=11):
     return recall_levels, mean_precision
 
 def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label):
+    outdir = str(outdir)  # ensure string!
     os.makedirs(outdir, exist_ok=True)
     with open(f"{outdir}/{label}_recall.pkl", "wb") as f:
         pickle.dump(recall_levels, f)
@@ -155,78 +156,64 @@ def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label):
 
 
 if __name__ == "__main__":
-    CONFIG = load_config()
+    # --------------------------------------------------------
+    # CONFIG
+    # --------------------------------------------------------
+    CONFIG = utils.load_config()
+    # Get current time in desired format
+    timestamp = datetime.now().strftime("%m%d%Y%H%M")
     DATA_SOURCE = CONFIG.get('database_source', 'local')
     THRESHOLD = CONFIG.get('relevance_threshold', 3)
     NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
     SAVE_PR = CONFIG.get('save_pr', False)
     PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
-    # dir = CONFIG.get('dataset_dir', None)
+    DATASET_DIR = CONFIG.get('dataset_dir', "dataset")
 
-    np.random.seed(42)          # this random seed has no affect in MAP calculation below
-                                # but if you pass a seed to Database, it has an effect
-    rows = stt.prepare_dataset(random_seed=0.1237)      # this seed has to be between 0 and 1
-    testset = [row[2] for row in rows if row[2]]
-    texttestset = [row[5] for row in rows if row[5]]
-    imagetestset = [row[3] for row in rows if row[3]]
-    videotestset = [row[4] for row in rows if row[4]]
-    testset = sorted(set(texttestset + imagetestset + videotestset))
-    ground_dist, predicted_dist, item2idx, idx2item = stt.calc_distance_local_DB(testset)
+    # --------------------------------------------------------
+    # LOAD test splits from dataset folder
+    # Note: we don't re-access DB or re-prepare splits anymore.
+    # These IDs were generated once and saved under DATASET_DIR.
+    # --------------------------------------------------------
+    all_data = stt.load_all_splits(DATASET_DIR)
 
-    ######## No need to read or write from below section ######
-    ######## as we will always be reading from database ######
-    ######## to avoid keyerror issue while reading from file ######
-    ###################################################################################
-    # os.makedirs(dir, exist_ok=True)
-    # os.chdir(dir)
-    # stt.write_dataset(testset, item2idx, idx2item, 'testset')
-    # stt.write_dataset(texttestset, item2idx, idx2item, 'texttestset')
-    # stt.write_dataset(imagetestset, item2idx, idx2item, 'imagetestset')
-    # stt.write_dataset(videotestset, item2idx, idx2item, 'videotestset')
-    # stt.save_dist_matrices("test_distance_matrix", ground_dist, predicted_dist)
+    testset = all_data['testset']
+    texttestset = all_data['text_testset']
+    imagetestset = all_data['image_testset']
+    videotestset = all_data['video_testset']
 
+    print("\n Loaded test split IDs from disk:")
+    print(f"- Combined testset size: {len(testset)}")
+    print(f"- Text testset: {len(texttestset)}")
+    print(f"- Image testset: {len(imagetestset)}")
+    print(f"- Video testset: {len(videotestset)}")
 
-    # Load matrices and mappings for testdata
-    # testset, item2idx, idx2item, ground_dist, predicted_dist = stt.read_dataset(dir+'testset', 
-    #                                                                   dir+'test_distance_matrix', 
-    #                                                                   dir+'predicted_test_distance_matrix')
+    # --------------------------------------------------------
+    # LOAD pre-saved distance matrices and mappings for testset
+    # These were calculated and saved separately already.
+    # --------------------------------------------------------
+    test_ground_dist, test_predicted_dist, test_item2idx, test_idx2item = stt.load_dist_matrices(
+        "test", base_dir=DATASET_DIR
+    )
 
-    # # Prepare dataset splits
-    # # direct file reading, no more dataset access, or use above 4 lines
-    # with open(dir+'texttestset'+".pkl", "rb") as f:
-    #     texttestset  = pickle.load(f)
-    # with open(dir+'imagetestset'+".pkl", "rb") as f:
-    #     imagetestset  = pickle.load(f)
-    # with open(dir+'videotestset'+".pkl", "rb") as f:
-    #     videotestset  = pickle.load(f)
+    print("\n Loaded test distance matrices from disk:")
+    print(f"- Ground truth matrix shape: {test_ground_dist.shape}")
+    print(f"- Predicted matrix shape: {test_predicted_dist.shape}")
 
-    ###################################################################################
-        
-    print("Loaded predicted distances:", predicted_dist.shape)
-    print("Loaded ground truth distances:", ground_dist.shape)
-    print("Test set sizes:")
-    print(f"- Text: {len(texttestset)}")
-    print(f"- Image: {len(imagetestset)}")
-    print(f"- Video: {len(videotestset)}")
-
-
-    for item in texttestset:
-        if item not in item2idx:
-            print('MISSING:', item)
 
     EVAL_PAIRS = [
         (texttestset, texttestset, "Text->Text"),
         (videotestset, texttestset, "Video->Text"),
         (imagetestset, texttestset, "Image->Text"),
-        (texttestset, texttestset + imagetestset + videotestset,  "Text->All"),
+        # (texttestset, texttestset + imagetestset + videotestset,  "Text->Combined"), # gives different result than just passing testset 
+        (texttestset, testset,  "Text->All"),
         (videotestset, videotestset, "Video->Video"),
         (texttestset, videotestset, "Text->Video"),
         (imagetestset, videotestset, "Image->Video"),
-        (videotestset, texttestset + imagetestset + videotestset, "Video->All"),
+        (videotestset, testset, "Video->All"),
         (imagetestset, imagetestset, "Image->Image"),
         (texttestset, imagetestset, "Text->Image"),
         (videotestset, imagetestset, "Video->Image"),
-        (imagetestset, texttestset + imagetestset + videotestset, "Image->All")
+        (imagetestset, testset, "Image->All")
     ]
 
     maps = []
@@ -234,28 +221,26 @@ if __name__ == "__main__":
         scores = fx_calc_map_label_detailed(
             db_items=targetset,
             query_items=queryset,
-            dist=predicted_dist,
-            ground_dist=ground_dist,
+            dist=test_predicted_dist,
+            ground_dist=test_ground_dist,
             k=0,
             threshold=THRESHOLD,
             normalize_ap=NORMALIZE_AP,
-            item2idx=item2idx,
-            # save_pr_curve_flag=SAVE_PR,
-            # pr_curve_dir=PR_DIR,
-            # label=label.replace('->', '_')
+            item2idx=test_item2idx,
+            save_pr_curve_flag=SAVE_PR,
+            pr_curve_dir=PR_DIR+'/EARS/'+timestamp,
+            label=label.replace('->', '_')
         )
         print(f"{label}: MAP = {scores}")
         maps.append(scores)
 
     print(f"Mean MAP = {np.mean(maps)}")
 
-    # if save_pr_curve_flag and pr_curve_dir and label:
-    #         recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
-    #         save_pr_curve(pr_curve_dir, label, recall_levels, mean_precision)
-
 
     # calling the older fx_calc_map_label_detailed() for comparison
-    dist = predicted_dist
+    dist = test_predicted_dist
+    ground_dist = test_ground_dist
+    item2idx = test_item2idx
     maps = []
     maps.append(cmac1.fx_calc_map_label_detailed(texttestset, texttestset, dist, ground_dist, item2idx, k = 0))         # !!
     maps.append(cmac1.fx_calc_map_label_detailed(videotestset, texttestset, dist, ground_dist, item2idx, k = 0))
