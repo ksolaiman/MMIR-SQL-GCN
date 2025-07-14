@@ -223,20 +223,81 @@ def prepare_dataset(random_seed=0.1234):
 
     return rows 
 
-def write_dataset(testset, item2idx, idx2item, name):
-        with open(name+".pkl", "wb") as f:
-            pickle.dump(testset, f)
-        with open(name+"item2idx.pkl", "wb") as f:
-            pickle.dump(item2idx, f)
-        with open(name+"idx2item.pkl", "wb") as f:
-            pickle.dump(idx2item, f)
 
-def save_dist_matrices(filename, dist, predicted_dist):
-    with open(filename+".pkl", "wb") as f:
-            pickle.dump(dist, f)
-    with open("predicted_"+filename+".pkl", "wb") as f:
-            pickle.dump(predicted_dist, f)
+def save_dist_matrices(split_name, ground_dist, predicted_dist, item2idx, idx2item, base_dir="dataset"):
+    """
+    Saves the distance matrices and item-index mappings in the structured folder:
+    
+    dataset/
+      dist_matrices/
+        split_name/  (train/ or test/)
+          item2idx.pkl
+          idx2item.pkl
+          ground_distance_matrix.pkl
+          predicted_distance_matrix.pkl
+    """
+    import os
+    import pickle
 
+    # Define target folder
+    target_dir = os.path.join(base_dir, "dist_matrices", split_name)
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Save ground distance matrix
+    with open(os.path.join(target_dir, "ground_distance_matrix.pkl"), "wb") as f:
+        pickle.dump(ground_dist, f)
+
+    # Save predicted distance matrix
+    with open(os.path.join(target_dir, "predicted_distance_matrix.pkl"), "wb") as f:
+        pickle.dump(predicted_dist, f)
+
+    # Save item2idx mapping
+    with open(os.path.join(target_dir, "item2idx.pkl"), "wb") as f:
+        pickle.dump(item2idx, f)
+
+    # Save idx2item mapping
+    with open(os.path.join(target_dir, "idx2item.pkl"), "wb") as f:
+        pickle.dump(idx2item, f)
+
+    print(f"Saved distance matrices and mappings to {target_dir}")
+
+def load_dist_matrices(split_name, base_dir="dataset"):
+    """
+    Loads distance matrices and item-index mappings for the given split (train or test)
+    from the structured folder:
+    
+    dataset/
+      dist_matrices/
+        split_name/
+          item2idx.pkl
+          idx2item.pkl
+          ground_distance_matrix.pkl
+          predicted_distance_matrix.pkl
+          
+    Returns:
+        (ground_dist, predicted_dist, item2idx, idx2item)
+    """
+
+    target_dir = os.path.join(base_dir, "dist_matrices", split_name)
+
+    with open(os.path.join(target_dir, "ground_distance_matrix.pkl"), "rb") as f:
+        ground_dist = pickle.load(f)
+
+    with open(os.path.join(target_dir, "predicted_distance_matrix.pkl"), "rb") as f:
+        predicted_dist = pickle.load(f)
+
+    with open(os.path.join(target_dir, "item2idx.pkl"), "rb") as f:
+        item2idx = pickle.load(f)
+
+    with open(os.path.join(target_dir, "idx2item.pkl"), "rb") as f:
+        idx2item = pickle.load(f)
+
+    print(f"Loaded distance matrices and mappings from {target_dir}")
+
+    return ground_dist, predicted_dist, item2idx, idx2item
+
+
+# This is a legacy function, before I added load_dist_matrices(). Currently no use of it.
 def read_dataset(name, filename, predicted_matrix_filename):
     with open(name+".pkl", "rb") as f:
         testset  = pickle.load(f)
@@ -396,7 +457,6 @@ def train_validation_split(trainpool, val_ratio=0.2, random_seed=42):
     Random non-stratified train/validation split.
     Shuffles all IDs together and splits ignoring modality.
     """
-    import numpy as np
     np.random.seed(random_seed)
 
     shuffled = np.random.permutation(trainpool)
@@ -414,7 +474,6 @@ def stratified_train_validation_split_by_modality(
     Stratified train/validation split maintaining modality ratios.
     Splits each modality pool independently.
     """
-    import numpy as np
     np.random.seed(random_seed)
 
     def split_modality(pool):
@@ -444,7 +503,6 @@ def k_fold_split(trainpool, k=5, random_seed=42):
     Shuffles all IDs and splits ignoring modality.
     Yields (train, validation) for each fold.
     """
-    import numpy as np
     np.random.seed(random_seed)
 
     shuffled = np.random.permutation(trainpool)
@@ -466,7 +524,6 @@ def stratified_k_fold_split_by_modality(
     Splits each modality pool into k folds separately.
     Yields (train, validation, details) per fold.
     """
-    import numpy as np
 
     def make_folds(pool):
         np.random.seed(random_seed)
@@ -502,6 +559,7 @@ def stratified_k_fold_split_by_modality(
             "text_train": text_train,
             "text_val": text_val
         }
+
 
 # shows usage
 def main():
@@ -553,51 +611,30 @@ def main():
         print(f"Stratified Fold {i+1}: Train={len(train)}, Val={len(val)}")
 
 
-        
-    # rows = prepare_dataset()
-    # trainset = [row[0] for row in rows]
-    # print(len(trainset))
-    # testset = [row[2] for row in rows if row[2]]
-    # validset = [row[1] for row in rows if row[1]] # coz train is longer in length, tet column has null/none values
-    # print(len(validset))
-    # print(len(testset))
-    # # print(testset[1827])
-
-    # np.random.seed(42)
-    # #np.random.shuffle(testset) # need to shuffle before testing as all same class labels are concatanated one after another.
-
-    # from datetime import datetime
-
-    # start = datetime.now()
-    # # dist, item2idx, idx2item = calc_distance_local_DB(testset)
-    # end = datetime.now()
-    # print(end -  start)
-
-    # dir = "dataset - 06132025 - v2/"
-    # os.makedirs(dir, exist_ok=True)
-    # os.chdir(dir)
-
-    # texttestset = [row[5] for row in rows if row[5]]
-    # imagetestset = [row[3] for row in rows if row[3]]
-    # videotestset = [row[4] for row in rows if row[4]]
-    
-    # '''
+    # # pre-calculate and save the distance matrices
     # dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(testset)
-    # write_dataset(testset, item2idx, idx2item, 'testset')
-    # write_dataset(texttestset, item2idx, idx2item, 'texttestset')
-    # write_dataset(imagetestset, item2idx, idx2item, 'imagetestset')
-    # write_dataset(videotestset, item2idx, idx2item, 'videotestset')
-    # save_dist_matrices("test_distance_matrix", dist, predicted_dist)
-    
-    # dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(validset)
-    # write_dataset(validset, item2idx, idx2item, 'validset')
-    # save_dist_matrices("valid_distance_matrix", dist, predicted_dist)
+    # save_dist_matrices(
+    #     split_name="test",
+    #     ground_dist=dist,
+    #     predicted_dist=predicted_dist,
+    #     item2idx=item2idx,
+    #     idx2item=idx2item, 
+    #     base_dir=config.get("dataset_dir", "dataset")
+    # )
 
-    # dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(trainset)
-    # write_dataset(trainset, item2idx, idx2item, 'trainset')
-    # save_dist_matrices("train_distance_matrix", dist, predicted_dist)
-    # '''
-    
+    # dist, predicted_dist, item2idx, idx2item = calc_distance_local_DB(trainpool)
+    # save_dist_matrices(
+    #     split_name="train",
+    #     ground_dist=dist,
+    #     predicted_dist=predicted_dist,
+    #     item2idx=item2idx,
+    #     idx2item=idx2item, 
+    #     base_dir=config.get("dataset_dir", "dataset")
+    # )
+
+    # load the distance matrices
+    train_ground, train_predicted, train_item2idx, train_idx2item = load_dist_matrices("train", base_dir=config.get("dataset_dir", "dataset"))
+    test_ground, test_predicted, test_item2idx, test_idx2item = load_dist_matrices("test", base_dir=config.get("dataset_dir", "dataset"))
     
 
 if __name__ == "__main__":
