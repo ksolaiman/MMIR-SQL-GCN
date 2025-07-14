@@ -3,7 +3,6 @@ import utils
 import numpy as np
 import os
 import set_train_test_data_and_distance_matrix as stt
-import calc_MAP_mac_1 as cmac1
 from datetime import datetime
 import pickle
 
