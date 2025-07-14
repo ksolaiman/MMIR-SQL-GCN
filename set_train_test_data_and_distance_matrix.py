@@ -312,7 +312,7 @@ def read_dataset(name, filename, predicted_matrix_filename):
 
     return testset, testsetitem2idx, testsetidx2item, distance_matrix, predicted_distance_matrix
 
-def prepare_train_pool_and_test_splits(rows=None, random_seed=None):
+def prepare_train_pool_and_test_splits(rows=None, random_seed=0.1234):
     """
     Given DB rows with train, valid, test columns for each modality,
     combine train+valid into trainpool (for overall and per modality).
@@ -332,7 +332,7 @@ def prepare_train_pool_and_test_splits(rows=None, random_seed=None):
             - video_trainpool, video_testset
     """
     if rows is None:
-        rows = prepare_dataset()
+        rows = prepare_dataset(random_seed=random_seed)
 
     # Overall train/valid/test
     trainset = [row[0] for row in rows if row[0]]
