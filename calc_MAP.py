@@ -159,14 +159,18 @@ if __name__ == "__main__":
     # CONFIG
     # --------------------------------------------------------
     CONFIG = utils.load_config()
-    # Get current time in desired format
-    timestamp = datetime.now().strftime("%m%d%Y%H%M")
     DATA_SOURCE = CONFIG.get('database_source', 'local')
     THRESHOLD = CONFIG.get('relevance_threshold', 3)
     NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
     SAVE_PR = CONFIG.get('save_pr', False)
     PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
     DATASET_DIR = CONFIG.get('dataset_dir', "dataset")
+
+    # --------------------------------------------------------
+    # RESULTS_SAVING_DIRECTORY
+    # --------------------------------------------------------
+    timestamp = datetime.now().strftime("%m%d%Y%H%M")
+    results_saving_dir = PR_DIR+'/EARS/'+timestamp              # PR_DIR + model_name + timestamp
 
     # --------------------------------------------------------
     # LOAD test splits from dataset folder
@@ -198,7 +202,6 @@ if __name__ == "__main__":
     print(f"- Ground truth matrix shape: {test_ground_dist.shape}")
     print(f"- Predicted matrix shape: {test_predicted_dist.shape}")
 
-
     EVAL_PAIRS = [
         (texttestset, texttestset, "Text->Text"),
         (videotestset, texttestset, "Video->Text"),
@@ -216,6 +219,7 @@ if __name__ == "__main__":
     ]
 
     maps = []
+    results_lines = []
     for queryset, targetset, label in EVAL_PAIRS:
         scores = fx_calc_map_label_detailed(
             db_items=targetset,
@@ -227,10 +231,16 @@ if __name__ == "__main__":
             normalize_ap=NORMALIZE_AP,
             item2idx=test_item2idx,
             save_pr_curve_flag=SAVE_PR,
-            pr_curve_dir=PR_DIR+'/EARS/'+timestamp,
+            pr_curve_dir=results_saving_dir,
             label=label.replace('->', '_')
         )
         print(f"{label}: MAP = {scores}")
         maps.append(scores)
+        results_lines.append(f"{label}: {scores[0]:.4f}")
 
     print(f"Mean MAP = {np.mean(maps)}")
+    results_lines.append(f"Mean MAP = {np.mean(maps):.4f}")
+
+with open(os.path.join(results_saving_dir, 'map_results_k' + k + '.txt'), 'w') as f:
+    for line in results_lines:
+        f.write(line + '\n')
