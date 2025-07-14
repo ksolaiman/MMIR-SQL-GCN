@@ -29,6 +29,7 @@
   "relevance_threshold": 3,
   "normalize_ap": "p_over_all",
   "save_pr": false,
+  "k_values": -1,
 
-  "dataset_dir": "dataset/112420230000"
+  "dataset_dir": "dataset/071320252100"
 }
