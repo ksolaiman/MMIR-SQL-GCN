@@ -235,26 +235,3 @@ if __name__ == "__main__":
         maps.append(scores)
 
     print(f"Mean MAP = {np.mean(maps)}")
-
-
-    # calling the older fx_calc_map_label_detailed() for comparison
-    dist = test_predicted_dist
-    ground_dist = test_ground_dist
-    item2idx = test_item2idx
-    maps = []
-    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, texttestset, dist, ground_dist, item2idx, k = 0))         # !!
-    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, texttestset, dist, ground_dist, item2idx, k = 0))
-    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, texttestset, dist, ground_dist, item2idx, k = 0))
-    maps.append(cmac1.fx_calc_map_label_detailed(testset, texttestset, dist, ground_dist, item2idx, k = 0))
-    #
-    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, videotestset, dist, ground_dist, item2idx, k = 0))
-    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, videotestset, dist, ground_dist, item2idx, k = 0)) #
-    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, videotestset, dist, ground_dist, item2idx, k = 0))
-    maps.append(cmac1.fx_calc_map_label_detailed(testset, videotestset, dist, ground_dist, item2idx, k = 0))
-    #
-    maps.append(cmac1.fx_calc_map_label_detailed(imagetestset, imagetestset, dist, ground_dist, item2idx, k = 0))
-    maps.append(cmac1.fx_calc_map_label_detailed(texttestset, imagetestset, dist, ground_dist, item2idx, k = 0))  #
-    maps.append(cmac1.fx_calc_map_label_detailed(videotestset, imagetestset, dist, ground_dist, item2idx, k = 0))   #
-    maps.append(cmac1.fx_calc_map_label_detailed(testset, imagetestset, dist, ground_dist, item2idx, k = 0))
-
-    print(np.mean(maps))
