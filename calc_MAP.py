@@ -6,15 +6,6 @@ import set_train_test_data_and_distance_matrix as stt
 from datetime import datetime
 import pickle
 
-# # Load config
-# with open('config.json', 'r') as f:
-#     CONFIG = json.load(f)
-
-# DATA_SOURCE = CONFIG.get('database_source', 'local')        # second param is default
-# THRESHOLD = CONFIG.get('relevance_threshold', 3)
-# NORMALIZE_AP = CONFIG.get('normalize_ap', 'p_over_r')
-
-# print(f"Config loaded: {CONFIG}")
 
 def fx_calc_map_label_detailed(
     db_items, query_items, dist, ground_dist, k,
@@ -44,6 +35,8 @@ def fx_calc_map_label_detailed(
 
     Returns:
     - List of MAP scores at each k
+        > For k = [50, 100]
+        > returns [MAP@50, MAP@100]
     """
 
     numcases = len(db_items)
@@ -59,12 +52,12 @@ def fx_calc_map_label_detailed(
     # Handle special k values
     if k == 0:
         # Special: evaluate on the full ranked list (MAP@all)
-        k = numcases
+        k = [numcases]
     if k == -1:
         # Special: evaluate at two cutoffs
         ks = [50, numcases]
     else:
-        ks = [k]
+        ks = k
 
     def calMAP(_k):
         _res = []
@@ -112,16 +105,21 @@ def fx_calc_map_label_detailed(
 
         if save_pr_curve_flag and pr_curve_dir and label:
             recall_levels, mean_precision = compute_interpolated_pr_curve(precision, recall)
-            save_pr_curve_to_disk(recall_levels, mean_precision, pr_curve_dir, label)
+            save_pr_curve_to_disk(recall_levels, mean_precision, pr_curve_dir, label, 'all' if _k == numcases else _k)
 
         map_score = np.mean(_res)
-        print(f"MAP@{_k}: {map_score:.4f}")
+        # print(f"\r MAP@{_k}: {map_score:.4f}")
+        print(f"\r MAP@{'all' if _k == numcases else _k}: {map_score:.4f}")
         return map_score
 
     res = []
-    for _k in ks:
+    for _k in ks:       
         res.append(calMAP(_k))
 
+    # e,g. 
+    # for k=[50, 100], returns [MAP@50, MAP@100]; 
+    # for k=0, returns [MAP@all]; 
+    # for k=-1, returns [MAP@50, MAP@all]
     return res
 
 def compute_interpolated_pr_curve(precision, recall, n_points=11):
@@ -145,12 +143,13 @@ def compute_interpolated_pr_curve(precision, recall, n_points=11):
     mean_precision = np.mean(precision_values, axis=0)
     return recall_levels, mean_precision
 
-def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label):
+def save_pr_curve_to_disk(recall_levels, mean_precision, outdir, label, k=None):
     outdir = str(outdir)  # ensure string!
     os.makedirs(outdir, exist_ok=True)
-    with open(f"{outdir}/{label}_recall.pkl", "wb") as f:
+    suffix = f"_k@{k}" if k is not None else ""
+    with open(f"{outdir}/{label}{suffix}_recall.pkl", "wb") as f:
         pickle.dump(recall_levels, f)
-    with open(f"{outdir}/{label}_precision.pkl", "wb") as f:
+    with open(f"{outdir}/{label}{suffix}_precision.pkl", "wb") as f:
         pickle.dump(mean_precision, f)
 
 
@@ -165,6 +164,7 @@ if __name__ == "__main__":
     SAVE_PR = CONFIG.get('save_pr', False)
     PR_DIR = CONFIG.get('pr_curve_dir', 'prcurve')
     DATASET_DIR = CONFIG.get('dataset_dir', "dataset")
+    K_VALUES = CONFIG.get('k_values', 0)
 
     # --------------------------------------------------------
     # RESULTS_SAVING_DIRECTORY
@@ -206,27 +206,33 @@ if __name__ == "__main__":
         (texttestset, texttestset, "Text->Text"),
         (videotestset, texttestset, "Video->Text"),
         (imagetestset, texttestset, "Image->Text"),
-        # (texttestset, texttestset + imagetestset + videotestset,  "Text->Combined"), # gives different result than just passing testset 
-        (texttestset, testset,  "Text->All"),
+        
         (videotestset, videotestset, "Video->Video"),
         (texttestset, videotestset, "Text->Video"),
         (imagetestset, videotestset, "Image->Video"),
-        (videotestset, testset, "Video->All"),
+        
         (imagetestset, imagetestset, "Image->Image"),
         (texttestset, imagetestset, "Text->Image"),
         (videotestset, imagetestset, "Video->Image"),
+
+        # (texttestset, texttestset + imagetestset + videotestset,  "Text->Combined"), # gives different result than just passing testset 
+        (texttestset, testset,  "Text->All"),
+        (videotestset, testset, "Video->All"),
         (imagetestset, testset, "Image->All")
     ]
 
+    # --------------------------------------------------------
+    # MAP calculation for each modality
+    # --------------------------------------------------------
     maps = []
-    results_lines = []
     for queryset, targetset, label in EVAL_PAIRS:
+        print(f"{label}:")
         scores = fx_calc_map_label_detailed(
             db_items=targetset,
             query_items=queryset,
             dist=test_predicted_dist,
             ground_dist=test_ground_dist,
-            k=0,
+            k=K_VALUES,
             threshold=THRESHOLD,
             normalize_ap=NORMALIZE_AP,
             item2idx=test_item2idx,
@@ -234,13 +240,33 @@ if __name__ == "__main__":
             pr_curve_dir=results_saving_dir,
             label=label.replace('->', '_')
         )
-        print(f"{label}: MAP = {scores}")
+        # print(f"{label}: MAP = {scores}")
         maps.append(scores)
-        results_lines.append(f"{label}: {scores[0]:.4f}")
 
-    print(f"Mean MAP = {np.mean(maps)}")
-    results_lines.append(f"Mean MAP = {np.mean(maps):.4f}")
+    # print(maps)
+    mean_maps = [sum(col) / len(col) for col in zip(*maps)]
 
-with open(os.path.join(results_saving_dir, 'map_results_k' + k + '.txt'), 'w') as f:
-    for line in results_lines:
-        f.write(line + '\n')
+    ks = (['50', 'all'] if K_VALUES == -1 else 
+      ['all'] if K_VALUES == 0 else 
+      CONFIG.get('k_values', 0))
+    
+    print(f"\n Mean MAPs @ {ks} = {mean_maps}")
+
+    # --------------------------------------------------------
+    # SAVE MAP calculation result
+    # --------------------------------------------------------
+    results_lines = []
+    for kix, k in enumerate(ks):
+        results_lines.append(f"#### MAP@{k} Results ####\n")
+        for qix, (queryset, targetset, label) in enumerate(EVAL_PAIRS):
+            results_lines.append(f"{label}: MAP = {maps[qix][kix]:.4f}")
+        results_lines.append(f"Mean MAP = {mean_maps[kix]:.4f}\n")
+
+    os.makedirs(results_saving_dir, exist_ok=True)
+    with open(os.path.join(results_saving_dir, 'MAP_results.txt'), 'w') as f:
+        for line in results_lines:
+            f.write(line + '\n')
+
+    # --------------------------------------------------------
+    # MAP calculation completed
+    # --------------------------------------------------------
