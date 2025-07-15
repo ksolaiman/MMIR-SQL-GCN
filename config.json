@@ -31,5 +31,8 @@
   "save_pr": false,
   "k_values": -1,
 
-  "dataset_dir": "dataset/071320252100"
+  "dataset_dir": "dataset/071420250000",
+
+  "save_graphs": true,
+  "noisy": false
 }
