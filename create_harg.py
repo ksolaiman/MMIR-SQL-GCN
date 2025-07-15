@@ -88,6 +88,7 @@ def build_harg_from_properties(sample_properties):
                     )
                     clothes_id = harg.add_node(clothes_node)
                     harg.add_edge(obj_id, clothes_id, "wears")
+
             else:
                 prop_node = Node(
                     "PROPERTY",
@@ -95,13 +96,13 @@ def build_harg_from_properties(sample_properties):
                     {"value": prop_value}
                 )
                 prop_id = harg.add_node(prop_node)
-                harg.add_edge(obj_id, prop_id, "hasProperty")
+                harg.add_edge(obj_id, prop_id, prop_key)
     return harg
 
 # === Encoding ===
 
 def encode_node_label_auto(node, label_vocab):
-    parts = [node.node_type]
+    parts = [node.node_type, node.label] if node.label != node.node_type else [node.node_type]
     for k, v in sorted(node.properties.items()):
         parts.append(f"{k}:{v}")
     label_str = "|".join(parts)
@@ -111,7 +112,7 @@ def encode_node_label_auto(node, label_vocab):
     return label_vocab[label_str]
 
 def encode_node_label_fixed(node, label_vocab):
-    parts = [node.node_type]
+    parts = [node.node_type, node.label] if node.label != node.node_type else [node.node_type]
     for k, v in sorted(node.properties.items()):
         parts.append(f"{k}:{v}")
     label_str = "|".join(parts)
@@ -156,8 +157,7 @@ def save_simgnn_graph_json(graph_dict, output_path):
 
 # === Main Phases ===
 
-def get_properties_from_MUQNOL(config, itemID, noisy=True):
-    conn = utils.connect_to_database(config)
+def get_properties_from_MUQNOL(conn, itemID, noisy=True):
     dbcur = conn.cursor()
     sql = dbcur.mogrify("""SELECT mgid, ubc, lbc, gender from mmir_predicted where mgid=%s""", (AsIs(itemID),))
     dbcur.execute(sql)
@@ -173,7 +173,7 @@ def get_properties_from_MUQNOL(config, itemID, noisy=True):
     properties = {
         # "metadata": {
         #     "mgid": mgid
-        # },
+        # },                        # for every item it is different aka adds 1 to CED, no need to add in CED; 
         "objects": [
             {
                 "type": "PERSON",
@@ -200,21 +200,19 @@ def process_phase_train(config):
     label_vocab = {UNK_TOKEN: 0}  # Start with UNK = 0
     edge_type_vocab = {}
 
-    for idx in train_ids[0:5]:
-        properties = get_properties_from_MUQNOL(config, idx)
+    conn = utils.connect_to_database(config)
+    for idx in train_ids:
+        properties = get_properties_from_MUQNOL(conn, idx)
         if properties is None:
             print(f"[WARN] Skipping ID {idx}")
             continue
         harg = build_harg_from_properties(properties)
         graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="train")
-        print(graph_json)
-        if config.get('save_graph'):
+        if config.get('save_graphs'):
             save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
 
     # Save vocab
-    print(label_vocab)
-    print(edge_type_vocab)
-    if config.get('save_graph'):
+    if config.get('save_graphs'):
         with open(os.path.join(dataset_dir, "label_vocab.json"), "w") as f:
             json.dump(label_vocab, f, indent=2)
         with open(os.path.join(dataset_dir, "edge_type_vocab.json"), "w") as f:
@@ -236,6 +234,7 @@ def process_phase_test(config):
     with open(os.path.join(dataset_dir, "edge_type_vocab.json")) as f:
         edge_type_vocab = json.load(f)
 
+    conn = utils.connect_to_database(config)
     for idx in test_ids:
         properties = get_properties_from_MUQNOL(config)
         if properties is None:
@@ -243,7 +242,7 @@ def process_phase_test(config):
             continue
         harg = build_harg_from_properties(properties)
         graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="test")
-        if config.get('save_graph'):
+        if config.get('save_graphs'):
             save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
 
     print("[INFO] Finished TEST graph generation.")
