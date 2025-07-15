@@ -201,8 +201,9 @@ def get_properties_from_MUQNOL(conn, itemID, noisy=True):
 def process_phase_train(config):
     print("[INFO] Running PHASE: TRAIN")
     dataset_dir = config["dataset_dir"]
-    graph_dir = os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold", "train")
+    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
+                             "noisy" if config.get('noisy') else "gold")
+    graph_dir = os.path.join(graph_parent_dir, "train")
     os.makedirs(graph_dir, exist_ok=True)
 
     with open(os.path.join(dataset_dir, "trainpool.pkl"), "rb") as f:
@@ -219,35 +220,32 @@ def process_phase_train(config):
             continue
         harg = build_harg_from_properties(properties)
         graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="train")
-        if config.get('save_graphs'):
+        if config.get('save_simgnn_graphs'):
             save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
 
     # Save vocab
-    if config.get('save_graphs'):
-        with open(os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold", "label_vocab.json"), "w") as f:
+    if config.get('save_simgnn_graphs'):
+        with open(os.path.join(graph_parent_dir, "label_vocab.json"), "w") as f:
             json.dump(label_vocab, f, indent=2)
-        with open(os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold", "edge_type_vocab.json"), "w") as f:
+        with open(os.path.join(graph_parent_dir, "edge_type_vocab.json"), "w") as f:
             json.dump(edge_type_vocab, f, indent=2)
         print(f"[INFO] Saved label_vocab.json with {len(label_vocab)} entries.")
 
 def process_phase_test(config):
     print("[INFO] Running PHASE: TEST")
     dataset_dir = config["dataset_dir"]
-    graph_dir = os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold", "test")
+    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
+                             "noisy" if config.get('noisy') else "gold")
+    graph_dir = os.path.join(graph_parent_dir, "test")
     os.makedirs(graph_dir, exist_ok=True)
 
     with open(os.path.join(dataset_dir, "testset.pkl"), "rb") as f:
         test_ids = pickle.load(f)
 
-    with open(os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold", "label_vocab.json")) as f:
+    with open(os.path.join(graph_parent_dir, "label_vocab.json")) as f:
         label_vocab = json.load(f)
 
-    with open(os.path.join(dataset_dir, "graphs", 
-                             "noisy" if config.get('noisy') else "gold",  "edge_type_vocab.json")) as f:
+    with open(os.path.join(graph_parent_dir,  "edge_type_vocab.json")) as f:
         edge_type_vocab = json.load(f)
 
     conn = utils.connect_to_database(config)
@@ -258,7 +256,7 @@ def process_phase_test(config):
             continue
         harg = build_harg_from_properties(properties)
         graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="test")
-        if config.get('save_graphs'):
+        if config.get('save_simgnn_graphs'):
             save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
 
     print("[INFO] Finished TEST graph generation.")
