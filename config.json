@@ -33,6 +33,7 @@
 
   "dataset_dir": "dataset/071420250000",
 
-  "save_graphs": true,
+  "save_simgnn_graphs": true,
+  "simgnn_graph_dir": "harg_turned_simgnn_graphs",
   "noisy": false
 }
