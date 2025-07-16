@@ -55,6 +55,17 @@ class HARG:
                 } for e in self.edges
             ]
         }
+    
+    @staticmethod
+    def from_dict(data):
+        harg = HARG()
+        for node_data in data["nodes"]:
+            node = Node(node_data["node_type"], node_data["label"], node_data.get("properties", {}))
+            node.id = node_data["id"]
+            harg.nodes[node.id] = node
+        for edge_data in data["edges"]:
+            harg.edges.append(Edge(edge_data["source"], edge_data["target"], edge_data["relation"]))
+        return harg
 
 
 
@@ -153,9 +164,82 @@ def harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase):
 
 def save_simgnn_graph_json(graph_dict, output_path, noisy=None):
     with open(output_path, "w") as f:
-        json.dump(graph_dict, f)
+        json.dump(graph_dict, f, indent=2)
 
 # === Main Phases ===
+
+def process_phase_train(config):
+    print("[INFO] Running PHASE: TRAIN")
+    dataset_dir = config["dataset_dir"]
+    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
+                             "noisy" if config.get('noisy') else "gold")
+    graph_dir = os.path.join(graph_parent_dir, "train")
+    os.makedirs(graph_dir, exist_ok=True)
+
+    with open(os.path.join(dataset_dir, "trainpool.pkl"), "rb") as f:
+        train_ids = pickle.load(f)
+
+    label_vocab = {UNK_TOKEN: 0}  # Start with UNK = 0
+    edge_type_vocab = {}
+
+    conn = utils.connect_to_database(config)
+
+    for idx in train_ids[0:5]:
+        properties = get_properties_from_MUQNOL(conn, idx, config.get('noisy'))
+        if properties is None:
+            print(f"[WARN] Skipping ID {idx}")
+            continue
+        harg = build_harg_from_properties(properties)
+        graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="train")
+        if config.get('save_simgnn_graphs'):
+            save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
+        if config.get('save_hargs'):
+            save_simgnn_graph_json(harg.to_dict(), os.path.join(dataset_dir, config.get("harg_dir"),
+                             "noisy" if config.get('noisy') else "gold", "train", f"{idx}.json"))
+
+    # Save vocab
+    if config.get('save_simgnn_graphs'):
+        with open(os.path.join(graph_parent_dir, "label_vocab.json"), "w") as f:
+            json.dump(label_vocab, f, indent=2)
+        with open(os.path.join(graph_parent_dir, "edge_type_vocab.json"), "w") as f:
+            json.dump(edge_type_vocab, f, indent=2)
+        print(f"[INFO] Saved label_vocab.json with {len(label_vocab)} entries.")
+
+def process_phase_test(config):
+    print("[INFO] Running PHASE: TEST")
+    dataset_dir = config["dataset_dir"]
+    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
+                             "noisy" if config.get('noisy') else "gold")
+    graph_dir = os.path.join(graph_parent_dir, "test")
+    os.makedirs(graph_dir, exist_ok=True)
+
+    with open(os.path.join(dataset_dir, "testset.pkl"), "rb") as f:
+        test_ids = pickle.load(f)
+
+    with open(os.path.join(graph_parent_dir, "label_vocab.json")) as f:
+        label_vocab = json.load(f)
+
+    with open(os.path.join(graph_parent_dir,  "edge_type_vocab.json")) as f:
+        edge_type_vocab = json.load(f)
+
+    conn = utils.connect_to_database(config)
+    for idx in test_ids:
+        properties = get_properties_from_MUQNOL(conn, idx, config.get('noisy'))
+        if properties is None:
+            print(f"[WARN] Skipping ID {idx}")
+            continue
+        harg = build_harg_from_properties(properties)
+        graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="test")
+        if config.get('save_simgnn_graphs'):
+            save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
+        if config.get('save_hargs'):
+            save_simgnn_graph_json(harg.to_dict(), os.path.join(dataset_dir, config.get("harg_dir"),
+                             "noisy" if config.get('noisy') else "gold", "train", f"{idx}.json"))
+                             
+    print("[INFO] Finished TEST graph generation.")
+
+
+# === MUQNOL specific functions ====
 
 def get_properties_from_MUQNOL(conn, itemID, noisy=True):
     """
@@ -198,68 +282,7 @@ def get_properties_from_MUQNOL(conn, itemID, noisy=True):
 
     return properties
 
-def process_phase_train(config):
-    print("[INFO] Running PHASE: TRAIN")
-    dataset_dir = config["dataset_dir"]
-    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
-                             "noisy" if config.get('noisy') else "gold")
-    graph_dir = os.path.join(graph_parent_dir, "train")
-    os.makedirs(graph_dir, exist_ok=True)
 
-    with open(os.path.join(dataset_dir, "trainpool.pkl"), "rb") as f:
-        train_ids = pickle.load(f)
-
-    label_vocab = {UNK_TOKEN: 0}  # Start with UNK = 0
-    edge_type_vocab = {}
-
-    conn = utils.connect_to_database(config)
-    for idx in train_ids:
-        properties = get_properties_from_MUQNOL(conn, idx, config.get('noisy'))
-        if properties is None:
-            print(f"[WARN] Skipping ID {idx}")
-            continue
-        harg = build_harg_from_properties(properties)
-        graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="train")
-        if config.get('save_simgnn_graphs'):
-            save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
-
-    # Save vocab
-    if config.get('save_simgnn_graphs'):
-        with open(os.path.join(graph_parent_dir, "label_vocab.json"), "w") as f:
-            json.dump(label_vocab, f, indent=2)
-        with open(os.path.join(graph_parent_dir, "edge_type_vocab.json"), "w") as f:
-            json.dump(edge_type_vocab, f, indent=2)
-        print(f"[INFO] Saved label_vocab.json with {len(label_vocab)} entries.")
-
-def process_phase_test(config):
-    print("[INFO] Running PHASE: TEST")
-    dataset_dir = config["dataset_dir"]
-    graph_parent_dir = os.path.join(dataset_dir, config.get("simgnn_graph_dir"),
-                             "noisy" if config.get('noisy') else "gold")
-    graph_dir = os.path.join(graph_parent_dir, "test")
-    os.makedirs(graph_dir, exist_ok=True)
-
-    with open(os.path.join(dataset_dir, "testset.pkl"), "rb") as f:
-        test_ids = pickle.load(f)
-
-    with open(os.path.join(graph_parent_dir, "label_vocab.json")) as f:
-        label_vocab = json.load(f)
-
-    with open(os.path.join(graph_parent_dir,  "edge_type_vocab.json")) as f:
-        edge_type_vocab = json.load(f)
-
-    conn = utils.connect_to_database(config)
-    for idx in test_ids:
-        properties = get_properties_from_MUQNOL(conn, idx, config.get('noisy'))
-        if properties is None:
-            print(f"[WARN] Skipping ID {idx}")
-            continue
-        harg = build_harg_from_properties(properties)
-        graph_json = harg_to_simgnn_graph(harg, label_vocab, edge_type_vocab, phase="test")
-        if config.get('save_simgnn_graphs'):
-            save_simgnn_graph_json(graph_json, os.path.join(graph_dir, f"{idx}.json"))
-
-    print("[INFO] Finished TEST graph generation.")
 
 # === Entry point ===
 
