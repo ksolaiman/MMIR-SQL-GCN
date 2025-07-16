@@ -1,5 +1,6 @@
 {
-  "db_host": "local_mac_2",                   
+  "db_host": "local_mac_2",     
+  "database_source": "local_mac_2",              
 
   "remote": {
     "database": "ng",
@@ -25,7 +26,6 @@
     "port": 5432
   },
 
-  "database_source": "local_mac_2",
   "relevance_threshold": 3,
   "normalize_ap": "p_over_all",
   "save_pr": false,

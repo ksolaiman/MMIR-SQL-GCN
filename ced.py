@@ -12,7 +12,7 @@ from create_harg import HARG, Node, Edge
 #   LBC: 3
 #   GENDER: 0
 
-# cost for this PERSON object = 
+# cost for this PERSON object using EPL vertex = 
 # RCOST(UBC) because 2 ≠ 5
 # + 0 for LBC because 3 == 3
 # + RCOST(GENDER) because 1 ≠ 0
@@ -69,26 +69,27 @@ def calculate_ced_munkres(harg1, harg2, rcost_dict, icost):
     
     return total_cost
 
+if __name__ == "__main__":
+    RCOST = {'GENDER': 3, 'UBC': 2, 'LBC': 2}
+    ICOST = 2
 
-RCOST = {'GENDER': 3, 'UBC': 2, 'LBC': 2}
-ICOST = 2
+    with open("dataset/071420250000/hargs/gold/train/2.json", "r") as f:
+        graph_data = json.load(f)
+    harg1 = HARG.from_dict(graph_data)
 
-with open("dataset/071420250000/hargs/gold/train/2.json", "r") as f:
-    graph_data = json.load(f)
-harg1 = HARG.from_dict(graph_data)
+    with open("dataset/071420250000/hargs/gold/train/3.json", "r") as f:
+        graph_data = json.load(f)
+    harg2 = HARG.from_dict(graph_data)
 
-with open("dataset/071420250000/hargs/gold/train/3.json", "r") as f:
-    graph_data = json.load(f)
-harg2 = HARG.from_dict(graph_data)
-
-ced = calculate_ced_munkres(harg1, harg2, RCOST, ICOST)
-print("CED:", ced)
+    ced = calculate_ced_munkres(harg1, harg2, RCOST, ICOST)
+    print("CED:", ced)
 
 
-# basically I don't need to use Munkres and HARG to calculate CED,
-# I have    graph from gold properties
-        #   graph from noisy properties                     --  use as training graph   (for FemmIR)
-        #   ground_dist_matrix between a pair of graphs     --  use as training label   (for FemmIR)
+    # basically for MUQNOL, I don't need to use Munkres and HARG to calculate CED,
+    # I have    
+    #           graph from gold properties
+            #   graph from noisy properties                     --  use as training graph   (for FemmIR)
+            #   ground_dist_matrix between a pair of graphs     --  use as training label   (for FemmIR)
 
-    # nodes1 = harg1['labels']
-    # nodes2 = harg2['labels']
+        # nodes1 = harg1['labels']
+        # nodes2 = harg2['labels']
