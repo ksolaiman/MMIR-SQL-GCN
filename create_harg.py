@@ -184,7 +184,7 @@ def process_phase_train(config):
 
     conn = utils.connect_to_database(config)
 
-    for idx in train_ids[0:5]:
+    for idx in train_ids:
         properties = get_properties_from_MUQNOL(conn, idx, config.get('noisy'))
         if properties is None:
             print(f"[WARN] Skipping ID {idx}")
