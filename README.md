@@ -189,7 +189,310 @@ python calc_MAP_25.py
 * Don't rely on old pickled IDs if underlying DB has changed.
 * Ensure consistency of threshold and normalization for comparability.
 
+
 ---
+
+Below is the **updated, ready-to-use `README.md`** in pure Markdown:
+
+---
+
+````markdown
+# MMIR Retrieval Evaluation Toolkit
+
+This repository provides tools to:
+
+✅ Connect to a PostgreSQL MMIR database  
+✅ Prepare train/validation/test splits with distance matrices  
+✅ Evaluate retrieval performance using Mean Average Precision (MAP)  
+✅ Optionally generate and save interpolated Precision-Recall (PR) curves
+
+---
+
+## 📌 Main Scripts Overview
+
+### 🗂️ `set_train_test_data_and_distance_matrix.py`
+- Connects to the specified database using `config.json`
+- Reads raw MMIR data
+- Splits data into:
+  - Train set
+  - Validation set
+  - Test set
+  - Modality-specific splits (Image / Video / Text)
+- Computes:
+  - Ground-truth distance matrix
+  - Predicted distance matrix
+- Saves:
+  - Dataset splits (IDs, mappings)
+  - Distance matrices
+
+---
+
+### 🗂️ `calc_MAP.py`
+- Loads saved distance matrices
+- Computes ranking-based retrieval MAP
+- Supports:
+  - Adjustable relevance threshold
+  - Custom AP normalization methods
+  - Single or multiple k-values for MAP@k
+  - Optional PR-curve generation and saving
+- All settings are controlled via `config.json`
+
+---
+
+### 🗂️ `utils.py`
+- Helper functions for:
+  - Writing dataset splits
+  - Saving distance matrices
+  - General file I/O
+
+---
+
+### 🗂️ `connection_to_database.py`
+- Centralized PostgreSQL connection logic
+- Reads DB connection parameters from `config.json`
+
+---
+
+### 📌 Explanation of Fields
+
+* `db_host`: Which DB profile to use (must match one of the entries below)
+* `remote`, `local_mac_1`, `local_mac_2`: Connection settings for different environments
+* `database_source`: Selects which profile to use for DB connection
+* `relevance_threshold`: Distance threshold for defining "relevant" items in evaluation
+* `normalize_ap`: AP normalization mode
+
+  * `"p_over_r"`: divides by retrieved relevant hits
+  * `"p_over_all"`: divides by all ground-truth relevant items
+* `save_pr`: If true, saves interpolated PR-curves
+* `k_values`: **Supports both single int or list** for k cutoffs
+
+  * Example single int:
+
+    * `0` → MAP over all retrieved items
+    * `50` → MAP\@50 only
+    * `-1` → special case that evaluates `[50, all]`
+  * Example list:
+
+    * `[50, 0]` → MAP\@50 and MAP\@all
+* `dataset_dir`: Directory to save/load dataset splits and distance matrices
+
+---
+
+## 📌 Recommended Workflow
+
+### 1️⃣ **Configure `config.json`**
+
+* Choose the correct `database_source` profile
+* Set `relevance_threshold`, `normalize_ap`, and `k_values` as needed
+
+✅ *Example single k:*
+
+```json
+"k_values": 0
+```
+
+✅ *Example multiple k values:*
+
+```json
+"k_values": [50, 0]
+```
+
+---
+
+### 2️⃣ **Prepare Dataset Splits and Distance Matrices**
+
+Run:
+
+```bash
+python set_train_test_data_and_distance_matrix.py
+```
+
+✅ Reads directly from the database
+✅ Generates and saves:
+
+* Train / validation / test splits
+* Modality-specific splits (image, video, text)
+* Ground-truth and predicted distance matrices
+
+✅ Output structure:
+
+```
+dataset/
+  071420250000/
+    testset.pkl
+    trainset.pkl
+    validset.pkl
+    test_distance_matrix.pkl
+    train_distance_matrix.pkl
+    valid_distance_matrix.pkl
+```
+
+*Note*: Always rerun this if the DB data changes!
+
+---
+
+### 3️⃣ **Evaluate MAP**
+
+Run:
+
+```bash
+python calc_MAP.py
+```
+
+✅ Loads saved matrices
+✅ Computes MAP for all specified k-values in `k_values`
+✅ Supports:
+
+* Single k (int)
+* Multiple k values (list)
+* Special case:
+
+  * `-1` → evaluates both MAP\@50 and MAP\@all
+
+✅ Saves MAP summary results to:
+
+```
+prcurve/EARS/<timestamp>/map_results.txt
+```
+
+✅ Also saves PR-curve .pkl files if `save_pr` is true:
+
+```
+prcurve/
+  EARS/
+    <timestamp>/
+      Text_Text_precision.pkl
+      Text_Text_recall.pkl
+      ...
+```
+
+---
+
+### 4️⃣ **Analyze or Plot PR Curves**
+
+Use:
+
+```
+pr_curve_generation.ipynb
+```
+
+✅ Loads saved .pkl files
+✅ Plots mean interpolated Precision-Recall curves
+✅ Supports both 11-point and 1000-point interpolation curves
+
+---
+
+## 📌 Notes on Precision-Recall Interpolation
+
+* Interpolation granularity is customizable in code:
+
+  * 11-point (standard IR-style)
+  * 1000-point (fine-grained)
+
+* Definition:
+
+  > At each recall level r, precision is the max precision observed at any recall ≥ r.
+
+✅ Standard Information Retrieval practice.
+
+---
+
+## 📌 Normalization Options for AP
+
+* `"p_over_r"`:
+
+  * Sum of precisions at hits / number of true positives retrieved
+  * Reflects retrieval *efficiency*
+* `"p_over_all"`:
+
+  * Sum of precisions at hits / total relevant items in ground truth
+  * Reflects retrieval *coverage*
+
+⚠️ These can yield **different MAP scores**.
+✅ Choose carefully to match your experimental setup.
+
+---
+
+## 📌 Archival Note
+
+Older scripts like `calc_MAP_mac_1.py` and `calc_MAP_mac_1_8pm.py` are **deprecated**.
+✅ Use **`calc_MAP.py`** as the final, maintained evaluation script.
+
+---
+
+## 📌 Final Note
+
+✅ Always ensure consistency between:
+
+* Database source
+* Threshold
+* Normalization mode
+* k\_values
+* Dataset splits
+
+for reproducible, comparable MAP evaluation results.
+
+---
+
+## 📌 Graph Generation Output Structure (simplified)
+
+Under your `dataset/` folder:
+
+- **hargs/**: Raw serialized *Hierarchical Attributed Relational Graphs (HARGs)*
+- **harg_turned_simgnn_graphs/**: Flattened, SimGNN-ready JSON graph pairs
+
+✅ **gold** = built from gold-annotated properties (targets for training)  
+✅ **noisy** = built from extracted (noisy) properties (inputs for training)
+
+✅ Both contain separate `label_vocab.json` and `edge_type_vocab.json` for consistent mapping.
+
+---
+
+## ✅ Generation Details
+
+- Controlled via `config.json`:
+  - `"noisy": true/false` → select predicted vs gold property extraction
+  - `"save_hargs": true/false` → toggle saving full HARG objects
+  - `"save_simgnn_graphs": true/false` → toggle saving flattened SimGNN graph pairs
+  - `"harg_dir"`, `"simgnn_graph_dir"` → specify subdirectory names
+
+✅ Example usage:
+
+```bash
+python create_harg.py --noisy False   # generate gold graphs
+python create_harg.py --noisy True    # generate noisy graphs
+
+---
+
+## 📌 CED Computation
+
+The `ced.py` module implements:
+
+- Hierarchical Attributed Relational Graph (HARG) construction
+- Cost model and edit distance calculation (Content Edit Distance, CED)
+- Alignment and edge cost strategies (e.g. Munkres assignment)
+
+✅ Used to generate **pairwise CED** between graph representations.
+
+---
+
+**Important Note (for MuQNOL dataset):**
+
+> ✅ For MuQNOL retrieval tasks, we only need the *dist_matrix* (already precomputed and saved, it's a proxy for CED).
+> ✅ Updated in new create_harg.py and ced.py, we are not creating 
+    - train_pairs/ and 
+    - test_pairs/ 
+for SIMGNN in these files, yet.
+
+
+
+---
+
+
+## 📌 Configuration
+
+All settings are in a single **`config.json`** file. Specially, for values of different keys:
+
 
 "dataset/071420250000" == random seed: 0.1237
 "dataset/071320252100" == random seed: 0.1234
@@ -199,3 +502,6 @@ python calc_MAP_25.py
 "k_values": [50, 100],
 "k_values": -1,
 "k_values": 0,
+
+---
+```
