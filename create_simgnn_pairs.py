@@ -4,6 +4,7 @@ import utils
 from collections import defaultdict
 from set_train_test_data_and_distance_matrix import train_validation_split
 import random
+import numpy as np
 
 POSITIVE_THRESHOLD = 3
 NEGATIVE_THRESHOLD = 6
@@ -62,6 +63,53 @@ def create_positive_and_negative_pairs_from_set_of_items(train_pool, item2idx, i
             pickle.dump(all_negative_pairs, f)
 
 
+def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, item2idx, item2modality, save_pairs=False):
+
+    all_positive_pairs = list()
+    all_negative_pairs = list()
+    for qid in train_pool:
+        q_idx = item2idx[qid]
+        mod_q = item2modality[qid]
+
+        row_ced = distance_matrix[q_idx]
+
+        # Exclude self
+        candidate_ids = [cid for cid in train_pool if cid != qid]
+        candidate_indices = np.array([item2idx[cid] for cid in candidate_ids])
+        candidate_modalities = [item2modality[cid] for cid in candidate_ids]
+
+        # Get CEDs for all candidates
+        candidate_ceds = row_ced[candidate_indices]
+
+        # Create boolean masks
+        pos_mask = candidate_ceds <= POSITIVE_THRESHOLD
+        neg_mask = (candidate_ceds > POSITIVE_THRESHOLD) & (candidate_ceds <= NEGATIVE_THRESHOLD)
+
+        # Positive pairs
+        for cid, ced, mod_c in zip(np.array(candidate_ids)[pos_mask],
+                                candidate_ceds[pos_mask],
+                                np.array(candidate_modalities)[pos_mask]):
+            pair_modality = (mod_q, mod_c)
+            all_positive_pairs.append((qid, cid, float(ced), pair_modality))
+
+        # Negative pairs
+        for cid, ced, mod_c in zip(np.array(candidate_ids)[neg_mask],
+                                candidate_ceds[neg_mask],
+                                np.array(candidate_modalities)[neg_mask]):
+            pair_modality = (mod_q, mod_c)
+            all_negative_pairs.append((qid, cid, float(ced), pair_modality))
+    
+    if save_pairs:
+        # ✅ Save pair buckets for future sampling
+        pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists")
+        os.makedirs(pair_bucket_dir, exist_ok=True)
+        
+        with open(os.path.join(pair_bucket_dir, "all_positive_pairs.pkl"), "wb") as f:
+            pickle.dump(all_positive_pairs, f)
+
+        with open(os.path.join(pair_bucket_dir, "all_negative_pairs.pkl"), "wb") as f:
+            pickle.dump(all_negative_pairs, f)
+
 
 def load_pool(subpath):
     full_path = os.path.join(DATASET_DIR, subpath)
@@ -96,7 +144,7 @@ with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2idx.pkl"), "rb") a
     item2idx = pickle.load(f)
 
 
-create_positive_and_negative_pairs_from_set_of_items(train_pool[0:1000], item2idx, item2modality, True)
+create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool[0:1000], item2idx, item2modality, True)
 
 
 # # Keep modality-wise buckets
