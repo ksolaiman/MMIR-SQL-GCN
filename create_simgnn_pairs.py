@@ -27,7 +27,10 @@ def build_item2modality(image_list, video_list, text_list):
         mapping[item] = "text"
     return mapping
 
-def process_qid(qid, item2idx, item2modality, distance_matrix):
+def process_qid(qid, train_pool, item2idx, item2modality, distance_matrix):
+    '''
+    returns all positive and negative pairs for the object-item "qid"
+    '''
     q_idx = item2idx[qid]
     mod_q = item2modality[qid]
 
@@ -51,9 +54,13 @@ def process_qid(qid, item2idx, item2modality, distance_matrix):
 
     return positive_pairs, negative_pairs
 
+
 def process_qid_vectorized(qid, NOS_mod,
                            train_pool_array, train_pool_indices, train_pool_modalities, 
                            item2idx, item2modality, distance_matrix, RANDOM_SEED=42):
+    '''
+    returns "NOS_mod" number of positive and negative pairs per modality for the object-item "qid"
+    '''
     
     # random.seed(RANDOM_SEED)
     rng = random.Random(RANDOM_SEED + hash(qid) % (2**32))
@@ -287,17 +294,24 @@ print(f"Image train: {len(image_pool)}")
 print(f"Video train: {len(video_pool)}")
 print(f"Text train: {len(text_pool)}")
 
-image_train, image_val = train_validation_split(image_pool)
-video_train, video_val = train_validation_split(video_pool)
-text_train, text_val = train_validation_split(text_pool)
+# image_train, image_val = train_validation_split(image_pool)
+# video_train, video_val = train_validation_split(video_pool)
+# text_train, text_val = train_validation_split(text_pool)
 
-# print(f"Image train: {len(image_train)}, val: {len(image_val)}")
-# print(f"Video train: {len(video_train)}, val: {len(video_val)}")
-# print(f"Text train: {len(text_train)}, val: {len(text_val)}")
+SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))  # e.g., 145 if text is smallest
 
-train_pool = load_pool("trainpool.pkl")
-# train_items = image_train + video_train + text_train
-# val_items = image_val + video_val + text_val
+image_train, image_val = train_validation_split(random.sample(image_pool, SAMPLE_SIZE))
+video_train, video_val = train_validation_split(random.sample(video_pool, SAMPLE_SIZE))
+text_train, text_val = train_validation_split(random.sample(text_pool, SAMPLE_SIZE))
+
+
+print(f"Image train: {len(image_train)}, val: {len(image_val)}")
+print(f"Video train: {len(video_train)}, val: {len(video_val)}")
+print(f"Text train: {len(text_train)}, val: {len(text_val)}")
+
+# train_items = load_pool("trainpool.pkl")
+train_items = image_train + video_train + text_train
+val_items = image_val + video_val + text_val
 
 
 item2modality = build_item2modality(image_pool, video_pool, text_pool)
@@ -312,7 +326,7 @@ with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2idx.pkl"), "rb") a
 
 NOS_mod = 3
 # # create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool[0:1000], item2idx, item2modality, distance_matrix, True)
-cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
+cpnpsi(train_items, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
 
 pair_dir = DATASET_DIR + "/femmir_pair_lists_v2"  # 🔁 Replace with your actual directory
 positive_pairs = []
