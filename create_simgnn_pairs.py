@@ -27,6 +27,7 @@ def build_item2modality(image_list, video_list, text_list):
         mapping[item] = "text"
     return mapping
 
+###### Currently Unused ######
 def process_qid(qid, train_pool, item2idx, item2modality, distance_matrix):
     '''
     returns all positive and negative (query, target) pairs for the object-item "qid"
@@ -53,7 +54,6 @@ def process_qid(qid, train_pool, item2idx, item2modality, distance_matrix):
             negative_pairs.append((qid, cid, float(ced), pair_modality))
 
     return positive_pairs, negative_pairs
-
 
 def process_qid_vectorized(qid, NOS_mod,
                            train_pool_array, train_pool_indices, train_pool_modalities, 
@@ -113,7 +113,14 @@ def process_qid_vectorized(qid, NOS_mod,
 
     return qid, positive_pairs, negative_pairs
 
-def parallel_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs=False, RANDOM_SEED=42):
+###### Currently Unused ######
+def chunkwise_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs=False, RANDOM_SEED=42):
+    '''
+    Create "NOS_mod" number of positive and negative pairs for every item in "train_pool"
+    and
+    Save them all in one file (if NOS_mod is larger, it is easier to save with this function in multiple chunks)
+    and uses Parallel processing using joblib and vectorize the inner for loop
+    '''
     train_pool_array = np.array(train_pool)
     train_pool_indices = np.array([item2idx[qid] for qid in train_pool])
     train_pool_modalities = np.array([item2modality[qid] for qid in train_pool])
@@ -139,8 +146,12 @@ def parallel_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matri
         start_idx += increment
 
         # Flatten
-        all_positive_pairs = [item for result in results for item in result[0]]
-        all_negative_pairs = [item for result in results for item in result[1]]
+        # all_positive_pairs = [item for result in results for item in result[0]]
+        # all_negative_pairs = [item for result in results for item in result[1]]
+
+        # Flatten into dictionaries keyed by qid
+        all_positive_pairs = {qid: positive for qid, positive, _ in results}
+        all_negative_pairs = {qid: negative for qid, _, negative in results}
 
         if save_pairs:
             # Save pair buckets for future sampling
@@ -155,8 +166,12 @@ def parallel_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matri
 
         print(f"Done chunk {i+1}/{num_chunks}: {end_idx} items processed")
 
-
 def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs=False, RANDOM_SEED=42):
+    '''
+    Create "NOS_mod" number of positive and negative pairs for every item in "train_pool"
+    and Save them all in one file (if NOS_mod is small, it is faster to save and can be done in this function)
+    and uses Parallel processing using joblib and vectorize the inner for loop
+    '''
     train_pool_array = np.array(train_pool)
     train_pool_indices = np.array([item2idx[qid] for qid in train_pool])
     train_pool_modalities = np.array([item2modality[qid] for qid in train_pool])
@@ -176,23 +191,29 @@ def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_p
     # all_negative_pairs = [item for result in results for item in result[1]]
 
     # Flatten into dictionaries keyed by qid
+    # Would make it easier to just create pairs from an object id
     all_positive_pairs = {qid: positive for qid, positive, _ in results}
     all_negative_pairs = {qid: negative for qid, _, negative in results}
 
     if save_pairs:
         # Save pair buckets for future sampling
-        pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists_v2")
+        pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists_NOS_mod")
         os.makedirs(pair_bucket_dir, exist_ok=True)
         
-        with open(os.path.join(pair_bucket_dir, "all_positive_pairs.pkl"), "wb") as f:
+        with open(os.path.join(pair_bucket_dir, "positive_pairs_by_queryid.pkl"), "wb") as f:
             pickle.dump(all_positive_pairs, f)
 
-        with open(os.path.join(pair_bucket_dir, "all_negative_pairs.pkl"), "wb") as f:
+        with open(os.path.join(pair_bucket_dir, "negative_pairs_by_queryid.pkl"), "wb") as f:
             pickle.dump(all_negative_pairs, f)
 
 
+###### Currently Unused ######
 def create_positive_and_negative_pairs_from_set_of_items_all_vectorized(train_pool, item2idx, item2modality, distance_matrix, save_pairs=False):
-
+    '''
+    Create all positive and negative pairs for every item in "train_pool"
+    and Save them all in one file (if NOS_mod is small, it is faster to save and can be done in this function)
+    and vectorize the both for loop
+    '''
     N = len(train_pool)
     idx_array = np.array([item2idx[qid] for qid in train_pool])
     modalities = np.array([item2modality[qid] for qid in train_pool])
@@ -233,8 +254,14 @@ def create_positive_and_negative_pairs_from_set_of_items_all_vectorized(train_po
         with open(os.path.join(pair_bucket_dir, "all_negative_pairs.pkl"), "wb") as f:
             pickle.dump(all_negative_pairs, f)
 
-def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, item2idx, item2modality, distance_matrix, save_pairs=False):
 
+###### Currently Unused ######
+def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, item2idx, item2modality, distance_matrix, save_pairs=False):
+    '''
+    Create all positive and negative pairs for every item in "train_pool"
+    and Save them all in one file (if NOS_mod is small, it is faster to save and can be done in this function)
+    and vectorize the inner for loop
+    '''
     all_positive_pairs = list()
     all_negative_pairs = list()
     train_pool_array = np.array(train_pool)
@@ -267,7 +294,6 @@ def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, 
             (qid, cid, float(ced), (mod_q, mod_c))
             for cid, ced, mod_c in zip(cids[neg_mask], ceds[neg_mask], c_modalities[neg_mask])
         ])
-
     
     if save_pairs:
         # ✅ Save pair buckets for future sampling
@@ -309,9 +335,10 @@ print(f"Image train: {len(image_train)}, val: {len(image_val)}")
 print(f"Video train: {len(video_train)}, val: {len(video_val)}")
 print(f"Text train: {len(text_train)}, val: {len(text_val)}")
 
-# train_items = load_pool("trainpool.pkl")
+# train_pool = load_pool("trainpool.pkl")
 train_items = image_train + video_train + text_train
 val_items = image_val + video_val + text_val
+train_pool = train_items + val_items
 
 
 item2modality = build_item2modality(image_pool, video_pool, text_pool)
@@ -326,7 +353,7 @@ with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2idx.pkl"), "rb") a
 
 NOS_mod = 3
 # # create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool[0:1000], item2idx, item2modality, distance_matrix, True)
-cpnpsi(train_items, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
+# cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
 
 pair_dir = DATASET_DIR + "/femmir_pair_lists_v2"  # 🔁 Replace with your actual directory
 positive_pairs = []
@@ -343,7 +370,8 @@ positive_pairs = [item for batch in all_batches for item in batch]
 print(f"✅ Loaded {len(positive_pairs)} positive pairs")
 
 positive_pairs = load_pickle(os.path.join(pair_dir, f"all_positive_pairs.pkl"))
-print(f"✅ Loaded {len(positive_pairs)} positive pairs")
+# print(positive_pairs.keys())
+print(f"✅ Loaded {len(positive_pairs[466])} positive pairs")
 
 '''
 # Load all positive pairs
