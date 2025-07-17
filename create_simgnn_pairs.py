@@ -67,37 +67,37 @@ def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, 
 
     all_positive_pairs = list()
     all_negative_pairs = list()
-    for qid in train_pool:
+    train_pool_array = np.array(train_pool)
+    train_pool_indices = np.array([item2idx[qid] for qid in train_pool])
+    train_pool_modalities = np.array([item2modality[qid] for qid in train_pool])
+
+    for i, qid in enumerate(train_pool):
         q_idx = item2idx[qid]
         mod_q = item2modality[qid]
 
-        row_ced = distance_matrix[q_idx]
+        # Get candidate indices excluding self
+        mask_not_self = train_pool_array != qid
+        cids = train_pool_array[mask_not_self]
+        c_indices = train_pool_indices[mask_not_self]
+        c_modalities = train_pool_modalities[mask_not_self]
 
-        # Exclude self
-        candidate_ids = [cid for cid in train_pool if cid != qid]
-        candidate_indices = np.array([item2idx[cid] for cid in candidate_ids])
-        candidate_modalities = [item2modality[cid] for cid in candidate_ids]
+        ceds = distance_matrix[q_idx, c_indices]
 
-        # Get CEDs for all candidates
-        candidate_ceds = row_ced[candidate_indices]
+        pos_mask = ceds <= POSITIVE_THRESHOLD
+        neg_mask = (ceds > POSITIVE_THRESHOLD) & (ceds <= NEGATIVE_THRESHOLD)
 
-        # Create boolean masks
-        pos_mask = candidate_ceds <= POSITIVE_THRESHOLD
-        neg_mask = (candidate_ceds > POSITIVE_THRESHOLD) & (candidate_ceds <= NEGATIVE_THRESHOLD)
+        # Append positives
+        all_positive_pairs.extend([
+            (qid, cid, float(ced), (mod_q, mod_c))
+            for cid, ced, mod_c in zip(cids[pos_mask], ceds[pos_mask], c_modalities[pos_mask])
+        ])
 
-        # Positive pairs
-        for cid, ced, mod_c in zip(np.array(candidate_ids)[pos_mask],
-                                candidate_ceds[pos_mask],
-                                np.array(candidate_modalities)[pos_mask]):
-            pair_modality = (mod_q, mod_c)
-            all_positive_pairs.append((qid, cid, float(ced), pair_modality))
+        # Append negatives
+        all_negative_pairs.extend([
+            (qid, cid, float(ced), (mod_q, mod_c))
+            for cid, ced, mod_c in zip(cids[neg_mask], ceds[neg_mask], c_modalities[neg_mask])
+        ])
 
-        # Negative pairs
-        for cid, ced, mod_c in zip(np.array(candidate_ids)[neg_mask],
-                                candidate_ceds[neg_mask],
-                                np.array(candidate_modalities)[neg_mask]):
-            pair_modality = (mod_q, mod_c)
-            all_negative_pairs.append((qid, cid, float(ced), pair_modality))
     
     if save_pairs:
         # ✅ Save pair buckets for future sampling
