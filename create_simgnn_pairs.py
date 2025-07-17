@@ -29,7 +29,7 @@ def build_item2modality(image_list, video_list, text_list):
 
 def process_qid(qid, train_pool, item2idx, item2modality, distance_matrix):
     '''
-    returns all positive and negative pairs for the object-item "qid"
+    returns all positive and negative (query, target) pairs for the object-item "qid"
     '''
     q_idx = item2idx[qid]
     mod_q = item2modality[qid]
@@ -59,7 +59,7 @@ def process_qid_vectorized(qid, NOS_mod,
                            train_pool_array, train_pool_indices, train_pool_modalities, 
                            item2idx, item2modality, distance_matrix, RANDOM_SEED=42):
     '''
-    returns "NOS_mod" number of positive and negative pairs per modality for the object-item "qid"
+    returns "NOS_mod" number of positive and negative (query, target) pairs per modality for the object-item "qid"
     '''
     
     # random.seed(RANDOM_SEED)
