@@ -524,6 +524,7 @@ def stratified_k_fold_split_by_modality(
     Splits each modality pool into k folds separately.
     Yields (train, validation, details) per fold.
     """
+    np.random.seed(random_seed)
 
     def make_folds(pool):
         np.random.seed(random_seed)
