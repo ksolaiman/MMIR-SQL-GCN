@@ -155,7 +155,7 @@ def chunkwise_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matr
 
         if save_pairs:
             # Save pair buckets for future sampling
-            pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists_v2")
+            pair_bucket_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
             os.makedirs(pair_bucket_dir, exist_ok=True)
             
             with open(os.path.join(pair_bucket_dir, "all_positive_pairs"+ str(i) +".pkl"), "wb") as f:
@@ -319,7 +319,7 @@ def create_pairs_for_full_training_pool(NOS_mod=5, save_pairs=True, RANDOM_SEED=
     cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs, RANDOM_SEED) 
     
 if __name__ == "__main__":
-    # create_pairs_for_full_training_pool(5, True, 42)            # already ran and created
+    # create_pairs_for_full_training_pool(5, True, 42)            # already ran and created, save_pairs=True
 
     # loading the pairs
     pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
