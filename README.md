@@ -474,9 +474,9 @@ The `ced.py` module implements:
 
 ✅ Used to generate **pairwise CED** between graph representations.
 
----
-Here is the updated and refined `README.md` content in markdown format, incorporating your recent updates regarding `create_femmir_pairs.py`, modality-based sampling, and CED-based pair generation:
 
+> For MUQNOL, i do not need to use ced.py, but for general other datasets we may use this to calculate dist_matrix. 
+> currently my SQL query calculates the dist_matrix.
 ---
 
 ```markdown
