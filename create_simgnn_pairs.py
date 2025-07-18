@@ -319,7 +319,16 @@ def create_pairs_for_full_training_pool(NOS_mod=5, save_pairs=True, RANDOM_SEED=
     cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs, RANDOM_SEED) 
     
 if __name__ == "__main__":
-    create_pairs_for_full_training_pool(5, True, 42)
+    # create_pairs_for_full_training_pool(5, True, 42)            # already ran and created
+
+    # loading the pairs
+    pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
+    positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"positive_pairs_by_queryid.pkl"))
+    negative_pairs = utils.load_pickle(os.path.join(pair_dir, f"negative_pairs_by_queryid.pkl"))
+
+    ObjectID = 466
+    print(f"✅ Loaded {len(positive_pairs[ObjectID])} positive pairs and {len(positive_pairs[ObjectID])} negative pairs for {ObjectID}")
+    print(f"✅ Total pairs generated: {len(positive_pairs) * (2 * len(positive_pairs[ObjectID]) )}")
 
 # # image_train, image_val = train_validation_split(image_pool)
 # # video_train, video_val = train_validation_split(video_pool)
@@ -356,9 +365,6 @@ pair_dir = DATASET_DIR + config.get("pair_save_dir")  # 🔁 Replace with your a
 
 # print(f"✅ Loaded {len(positive_pairs)} positive pairs")
 
-# positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"all_positive_pairs.pkl"))
-# # print(positive_pairs.keys())
-# print(f"✅ Loaded {len(positive_pairs[466])} positive pairs")
 
 '''
 # Load all positive pairs
