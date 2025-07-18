@@ -466,6 +466,7 @@ def train_validation_split(trainpool, val_ratio=0.2, random_seed=42):
 
     return train, validation
 
+
 def stratified_train_validation_split_by_modality(
     image_pool, video_pool, text_pool,
     balanced=False, undersample=True, oversample=False,
@@ -474,34 +475,30 @@ def stratified_train_validation_split_by_modality(
 ):
     """
     Stratified train/validation split maintaining modality ratios.
-    Splits each modality pool independently.
     """
     np.random.seed(random_seed)
 
-    def split_modality(pool):
-        shuffled = np.random.permutation(pool)
-        n_val = int(len(shuffled) * val_ratio)
-        return shuffled[n_val:].tolist(), shuffled[:n_val].tolist()
-    
+    def sample(pool, size, replace):
+        return np.random.choice(pool, size=size, replace=replace).tolist()
+
     if balanced:
         if undersample:
-            SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))  # e.g., 145 if text is smallest
-            image_train, image_val = train_validation_split(np.random.choice(image_pool, size=SAMPLE_SIZE, replace=False))
-            video_train, video_val = train_validation_split(np.random.choice(video_pool, size=SAMPLE_SIZE, replace=False))
-            text_train, text_val = train_validation_split(np.random.choice(text_pool, size=SAMPLE_SIZE, replace=False))
-        elif oversample:         # oversample from text and video
-            SAMPLE_SIZE = max(len(image_pool), len(video_pool), len(text_pool))  # e.g., largest
-            image_train, image_val = train_validation_split(np.random.choice(image_pool, size=SAMPLE_SIZE, replace=False))
-            video_train, video_val = train_validation_split(np.random.choice(video_pool, size=SAMPLE_SIZE, replace=True))
-            text_train, text_val = train_validation_split(np.random.choice(text_pool, size=SAMPLE_SIZE, replace=True))
-        else:                   # somewhere in middle
-            image_train, image_val = train_validation_split(np.random.choice(image_pool, size=SAMPLE_SIZE, replace=False))
-            video_train, video_val = train_validation_split(np.random.choice(video_pool, size=SAMPLE_SIZE, replace=True))
-            text_train, text_val = train_validation_split(np.random.choice(text_pool, size=SAMPLE_SIZE, replace=True))
+            SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))
+            replace_flags = (False, False, False)
+        elif oversample:
+            SAMPLE_SIZE = max(len(image_pool), len(video_pool), len(text_pool))
+            replace_flags = (False, True, True)
+        else:
+            replace_flags = (False, True, True)
+
+        image_train, image_val = train_validation_split(sample(image_pool, SAMPLE_SIZE, replace_flags[0]), val_ratio)
+        video_train, video_val = train_validation_split(sample(video_pool, SAMPLE_SIZE, replace_flags[1]), val_ratio)
+        text_train, text_val = train_validation_split(sample(text_pool, SAMPLE_SIZE, replace_flags[2]), val_ratio)
+
     else:
-        image_train, image_val = split_modality(image_pool)
-        video_train, video_val = split_modality(video_pool)
-        text_train, text_val = split_modality(text_pool)
+        image_train, image_val = train_validation_split(image_pool, val_ratio)
+        video_train, video_val = train_validation_split(video_pool, val_ratio)
+        text_train, text_val = train_validation_split(text_pool, val_ratio)
 
     combined_train = image_train + video_train + text_train
     combined_val = image_val + video_val + text_val
@@ -514,7 +511,6 @@ def stratified_train_validation_split_by_modality(
         "text_train": text_train,
         "text_val": text_val
     }
-
 
 
 def k_fold_split(trainpool, k=5, random_seed=42):
