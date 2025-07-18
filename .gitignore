@@ -1,2 +1,10 @@
 *.swp
 .ipynb_checkpoints
+.DS_Store
+__pycache__
+*.pyc
+prcurve/EARS/older-1000-points
+prcurve/simgnn/base/
+prcurve/simgnn/epoch_41/
+*temp-check.py
+archive/*
