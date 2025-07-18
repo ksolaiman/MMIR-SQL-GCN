@@ -330,43 +330,18 @@ if __name__ == "__main__":
     print(f"✅ Loaded {len(positive_pairs[ObjectID])} positive pairs and {len(positive_pairs[ObjectID])} negative pairs for {ObjectID}")
     print(f"✅ Total pairs generated: {len(positive_pairs) * (2 * len(positive_pairs[ObjectID]) )}")
 
-# # image_train, image_val = train_validation_split(image_pool)
-# # video_train, video_val = train_validation_split(video_pool)
-# # text_train, text_val = train_validation_split(text_pool)
-
-# SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))  # e.g., 145 if text is smallest
-
-# image_train, image_val = train_validation_split(random.sample(image_pool, SAMPLE_SIZE))
-# video_train, video_val = train_validation_split(random.sample(video_pool, SAMPLE_SIZE))
-# text_train, text_val = train_validation_split(random.sample(text_pool, SAMPLE_SIZE))
 
 
-# print(f"Image train: {len(image_train)}, val: {len(image_val)}")
-# print(f"Video train: {len(video_train)}, val: {len(video_val)}")
-# print(f"Text train: {len(text_train)}, val: {len(text_val)}")
+####### Reading the split files of positive and negative pairs
+'''     # using Parallel
+all_files = [os.path.join(pair_dir, f"all_positive_pairs{i}.pkl") for i in range(7)]
+all_batches = Parallel(n_jobs=4, backend="threading")(delayed(load_pickle)(f) for f in all_files)
+positive_pairs = [item for batch in all_batches for item in batch]
 
-
-# train_items = image_train + video_train + text_train
-# val_items = image_val + video_val + text_val
-# train_pool = train_items + val_items
-
-
-# # create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool[0:1000], item2idx, item2modality, distance_matrix, True)
-# cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
-
-pair_dir = DATASET_DIR + config.get("pair_save_dir")  # 🔁 Replace with your actual directory
-# positive_pairs = []
-# negative_pairs = []
-
-
-# all_files = [os.path.join(pair_dir, f"all_positive_pairs{i}.pkl") for i in range(7)]
-# all_batches = Parallel(n_jobs=4, backend="threading")(delayed(load_pickle)(f) for f in all_files)
-# positive_pairs = [item for batch in all_batches for item in batch]
-
-# print(f"✅ Loaded {len(positive_pairs)} positive pairs")
-
-
+print(f"✅ Loaded {len(positive_pairs)} positive pairs")
 '''
+
+'''     # not using Parallel
 # Load all positive pairs
 for i in range(1):  # 🔁 Adjust range if you have more/less chunks
     fname = os.path.join(pair_dir, f"all_positive_pairs{i}.pkl")
