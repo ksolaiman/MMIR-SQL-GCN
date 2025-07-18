@@ -327,7 +327,7 @@ if __name__ == "__main__":
     negative_pairs = utils.load_pickle(os.path.join(pair_dir, f"negative_pairs_by_queryid.pkl"))
 
     ObjectID = 466
-    print(f"✅ Loaded {len(positive_pairs[ObjectID])} positive pairs and {len(positive_pairs[ObjectID])} negative pairs for {ObjectID}")
+    print(f"✅ Loaded {len(positive_pairs[ObjectID])} positive pairs and {len(positive_pairs[ObjectID])} negative pairs for item {ObjectID}")
     print(f"✅ Total pairs generated: {len(positive_pairs) * (2 * len(positive_pairs[ObjectID]) )}")
 
 
