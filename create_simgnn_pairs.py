@@ -16,16 +16,16 @@ TARGET_NEG_COUNT_PER_MODALITY = 1000
 config = utils.load_config()
 DATASET_DIR = config.get("dataset_dir")
 
-# Create item2modality mapping
-def build_item2modality(image_list, video_list, text_list):
-    mapping = {}
-    for item in image_list:
-        mapping[item] = "image"
-    for item in video_list:
-        mapping[item] = "video"
-    for item in text_list:
-        mapping[item] = "text"
-    return mapping
+# Load distance matrix and mappings
+with open(os.path.join(DATASET_DIR, "dist_matrices/train/ground_distance_matrix.pkl"), "rb") as f:
+    distance_matrix = pickle.load(f)
+
+with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2idx.pkl"), "rb") as f:
+    item2idx = pickle.load(f)
+
+with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2modality.pkl"), "rb") as f:
+    item2modality = pickle.load(f)
+
 
 ###### Currently Unused ######
 def process_qid(qid, train_pool, item2idx, item2modality, distance_matrix):
@@ -197,7 +197,7 @@ def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_p
 
     if save_pairs:
         # Save pair buckets for future sampling
-        pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists_NOS_mod")
+        pair_bucket_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
         os.makedirs(pair_bucket_dir, exist_ok=True)
         
         with open(os.path.join(pair_bucket_dir, "positive_pairs_by_queryid.pkl"), "wb") as f:
@@ -307,71 +307,58 @@ def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, 
             pickle.dump(all_negative_pairs, f)
 
 
-def load_pool(subpath):
-    full_path = os.path.join(DATASET_DIR, subpath)
-    with open(full_path, "rb") as f:
-        return pickle.load(f)
 
-image_pool = load_pool("image/image_trainpool.pkl")
-video_pool = load_pool("video/video_trainpool.pkl")
-text_pool = load_pool("text/text_trainpool.pkl")
+def create_pairs_for_full_training_pool(NOS_mod=5, save_pairs=True, RANDOM_SEED=42):   
+    '''
+    Creating certain number of modality-stratified positive and negative (query, target) pairs for all of training pool.
+    Saved pairs could be access by query-id of the object/item.
+    IDEA is in future, whatever split I choose - KFold/80-20/balanced/unbalanced split,
+        just access the pairs of the id's there and create training data for SIMGNN
+    '''
+    train_pool = utils.load_pool("trainpool.pkl")
+    cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs, RANDOM_SEED) 
+    
+if __name__ == "__main__":
+    create_pairs_for_full_training_pool(5, True, 42)
 
-print(f"Image train: {len(image_pool)}")
-print(f"Video train: {len(video_pool)}")
-print(f"Text train: {len(text_pool)}")
+# # image_train, image_val = train_validation_split(image_pool)
+# # video_train, video_val = train_validation_split(video_pool)
+# # text_train, text_val = train_validation_split(text_pool)
 
-# image_train, image_val = train_validation_split(image_pool)
-# video_train, video_val = train_validation_split(video_pool)
-# text_train, text_val = train_validation_split(text_pool)
+# SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))  # e.g., 145 if text is smallest
 
-SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool))  # e.g., 145 if text is smallest
-
-image_train, image_val = train_validation_split(random.sample(image_pool, SAMPLE_SIZE))
-video_train, video_val = train_validation_split(random.sample(video_pool, SAMPLE_SIZE))
-text_train, text_val = train_validation_split(random.sample(text_pool, SAMPLE_SIZE))
-
-
-print(f"Image train: {len(image_train)}, val: {len(image_val)}")
-print(f"Video train: {len(video_train)}, val: {len(video_val)}")
-print(f"Text train: {len(text_train)}, val: {len(text_val)}")
-
-# train_pool = load_pool("trainpool.pkl")
-train_items = image_train + video_train + text_train
-val_items = image_val + video_val + text_val
-train_pool = train_items + val_items
+# image_train, image_val = train_validation_split(random.sample(image_pool, SAMPLE_SIZE))
+# video_train, video_val = train_validation_split(random.sample(video_pool, SAMPLE_SIZE))
+# text_train, text_val = train_validation_split(random.sample(text_pool, SAMPLE_SIZE))
 
 
-item2modality = build_item2modality(image_pool, video_pool, text_pool)
+# print(f"Image train: {len(image_train)}, val: {len(image_val)}")
+# print(f"Video train: {len(video_train)}, val: {len(video_val)}")
+# print(f"Text train: {len(text_train)}, val: {len(text_val)}")
 
 
-# Load distance matrix and mappings
-with open(os.path.join(DATASET_DIR, "dist_matrices/train/ground_distance_matrix.pkl"), "rb") as f:
-    distance_matrix = pickle.load(f)
+# train_items = image_train + video_train + text_train
+# val_items = image_val + video_val + text_val
+# train_pool = train_items + val_items
 
-with open(os.path.join(DATASET_DIR, "dist_matrices/train/item2idx.pkl"), "rb") as f:
-    item2idx = pickle.load(f)
 
-NOS_mod = 3
 # # create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool[0:1000], item2idx, item2modality, distance_matrix, True)
 # cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, True, 42)       # used this
 
-pair_dir = DATASET_DIR + "/femmir_pair_lists_v2"  # 🔁 Replace with your actual directory
-positive_pairs = []
-negative_pairs = []
+pair_dir = DATASET_DIR + config.get("pair_save_dir")  # 🔁 Replace with your actual directory
+# positive_pairs = []
+# negative_pairs = []
 
-def load_pickle(fname):
-    with open(fname, "rb") as f:
-        return pickle.load(f)
 
-all_files = [os.path.join(pair_dir, f"all_positive_pairs{i}.pkl") for i in range(7)]
-all_batches = Parallel(n_jobs=4, backend="threading")(delayed(load_pickle)(f) for f in all_files)
-positive_pairs = [item for batch in all_batches for item in batch]
+# all_files = [os.path.join(pair_dir, f"all_positive_pairs{i}.pkl") for i in range(7)]
+# all_batches = Parallel(n_jobs=4, backend="threading")(delayed(load_pickle)(f) for f in all_files)
+# positive_pairs = [item for batch in all_batches for item in batch]
 
-print(f"✅ Loaded {len(positive_pairs)} positive pairs")
+# print(f"✅ Loaded {len(positive_pairs)} positive pairs")
 
-positive_pairs = load_pickle(os.path.join(pair_dir, f"all_positive_pairs.pkl"))
-# print(positive_pairs.keys())
-print(f"✅ Loaded {len(positive_pairs[466])} positive pairs")
+# positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"all_positive_pairs.pkl"))
+# # print(positive_pairs.keys())
+# print(f"✅ Loaded {len(positive_pairs[466])} positive pairs")
 
 '''
 # Load all positive pairs
@@ -390,37 +377,3 @@ for i in range(7):
 
 print(f"✅ Loaded {len(negative_pairs)} negative pairs")
 '''
-#################################################
-
-# # Keep modality-wise buckets
-# # keep track of positive/negative pairs by modality pair type (e.g. ("text","image"), ("video","video"), etc.).
-# positive_pairs_by_modality = defaultdict(list)
-# negative_pairs_by_modality = defaultdict(list)
-
-
-
-# print(positive_pairs_by_modality.keys())  
-# # print(positive_pairs_by_modality.values())  
-
-# # ✅ Save pair buckets for future sampling
-# pair_bucket_dir = os.path.join(DATASET_DIR, "femmir_pair_lists")
-# os.makedirs(pair_bucket_dir, exist_ok=True)
-
-# with open(os.path.join(pair_bucket_dir, "positive_pairs_by_modality.pkl"), "wb") as f:
-#     pickle.dump(positive_pairs_by_modality, f)
-
-# with open(os.path.join(pair_bucket_dir, "negative_pairs_by_modality.pkl"), "wb") as f:
-#     pickle.dump(negative_pairs_by_modality, f)
-
-
-
-# final_train_pairs = []
-
-# for modality_type in positive_pairs_by_modality:
-#     pos_pool = positive_pairs_by_modality[modality_type]
-#     neg_pool = negative_pairs_by_modality.get(modality_type, [])
-
-#     sampled_pos = random.sample(pos_pool, min(TARGET_POS_COUNT_PER_MODALITY, len(pos_pool)))
-#     sampled_neg = random.sample(neg_pool, min(TARGET_NEG_COUNT_PER_MODALITY, len(neg_pool)))
-
-#     final_train_pairs.extend(sampled_pos + sampled_neg)

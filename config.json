@@ -37,5 +37,7 @@
   "simgnn_graph_dir": "harg_turned_simgnn_graphs",
   "save_hargs": false,
   "harg_dir": "hargs",
-  "noisy": false
+  "noisy": false,
+
+  "pair_save_dir": "femmir_pair_lists_NOS_mod"
 }
