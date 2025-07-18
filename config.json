@@ -39,5 +39,8 @@
   "harg_dir": "hargs",
   "noisy": false,
 
-  "pair_save_dir": "femmir_pair_lists_NOS_mod_seed=42_NOS=10"
+  "pair_save_dir": "balanced_undersampled_femmir_pair_lists_NOS_mod_seed=42_NOS=10",
+  "create_new_pairs": false,
+
+  "random_seed": 42
 }

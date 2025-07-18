@@ -166,7 +166,7 @@ def chunkwise_cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matr
 
         print(f"Done chunk {i+1}/{num_chunks}: {end_idx} items processed")
 
-def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs=False, RANDOM_SEED=42):
+def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs=False, split="train", RANDOM_SEED=42):
     '''
     Create "NOS_mod" number of positive and negative pairs for every item in "train_pool"
     and Save them all in one file (if NOS_mod is small, it is faster to save and can be done in this function)
@@ -197,7 +197,7 @@ def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_p
 
     if save_pairs:
         # Save pair buckets for future sampling
-        pair_bucket_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
+        pair_bucket_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"), split)
         os.makedirs(pair_bucket_dir, exist_ok=True)
         
         with open(os.path.join(pair_bucket_dir, "positive_pairs_by_queryid.pkl"), "wb") as f:
@@ -205,6 +205,8 @@ def cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_p
 
         with open(os.path.join(pair_bucket_dir, "negative_pairs_by_queryid.pkl"), "wb") as f:
             pickle.dump(all_negative_pairs, f)
+
+    return all_positive_pairs, all_negative_pairs
 
 
 ###### Currently Unused ######
@@ -308,18 +310,18 @@ def create_positive_and_negative_pairs_from_set_of_items_vectorized(train_pool, 
 
 
 
-def create_pairs_for_full_training_pool(NOS_mod=5, save_pairs=True, RANDOM_SEED=42):   
+def create_pairs_for_full_training_pool(data_pool, item2idx, item2modality, distance_matrix, NOS_mod=5, save_pairs=True, split="train", RANDOM_SEED=42):   
     '''
     Creating certain number of modality-stratified positive and negative (query, target) pairs for all of training pool.
     Saved pairs could be access by query-id of the object/item.
     IDEA is in future, whatever split I choose - KFold/80-20/balanced/unbalanced split,
         just access the pairs of the id's there and create training data for SIMGNN
     '''
-    train_pool = utils.load_pool("trainpool.pkl")
-    cpnpsi(train_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs, RANDOM_SEED) 
+    return cpnpsi(data_pool, NOS_mod, item2idx, item2modality, distance_matrix, save_pairs, split=split, RANDOM_SEED=RANDOM_SEED) 
     
 if __name__ == "__main__":
-    # create_pairs_for_full_training_pool(5, True, 42)            # already ran and created, save_pairs=True
+    train_pool = utils.load_pool("trainpool.pkl")
+    # create_pairs_for_full_training_pool(train_pool, 5, True, 42)            # already ran and created, save_pairs=True
 
     # loading the pairs
     pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
