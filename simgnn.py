@@ -19,36 +19,26 @@ from torch.utils.data import DataLoader
 
 from create_femmir_pairs import create_pairs_for_full_training_pool
 from itertools import chain
+from create_harg import load_simgnn_graph_json_by_id
 
 
 # create a new FemmIRPairsDataset(FemmirDataset). # no need
 
 class FemmirDataset(data.Dataset):
-    def __init__(self, item_ids, global_labels):
+    def __init__(self, item_ids, noisy_global_labels=None, split="train"):
         # image_dir, imagetestset, input_transform = None, mgid2predicted_properties_dict=None, label=None, type='image'
         super(FemmirDataset, self).__init__()
 
-        # ## TODO: initial_label_enum : DONE w/ saved file
-        # self.training_graphs = glob.glob(training_graphs + "*.json")
-        # # self.val_graphs = glob.glob(self.args.validation_graphs + "*.json")
-        # # self.testing_graphs = glob.glob(self.args.testing_graphs + "*.json")
-        # # graph_pairs = self.training_graphs + self.testing_graphs + self.val_graphs
+        graph_parent_dir = os.path.join(config["dataset_dir"], config.get("simgnn_graph_dir"), "noisy")
+        with open(os.path.join(graph_parent_dir, "label_vocab.json"), "r") as f:
+            noisy_global_labels = json.load(f)
 
-        # with open("selfObj.pkl", "rb") as f:
-        #      obj = pickle.load(f)
-        #     #  self.training_graphs = obj.training_graphs
-        #     #  self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
-        #     #  self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
-        #      self.global_labels = obj.global_labels
-        #      self.number_of_labels = len(self.global_labels)
-        #     #  print(self.number_of_labels)
-
-        # self.training_graphs = training_graphs            # called pairs now
-        # self.global_labels = global_labels
-        # self.number_of_labels = len(self.global_labels)
+        self.split = "train"
+        self.global_labels = noisy_global_labels
+        self.number_of_labels = len(self.global_labels)
 
         # self.item_ids = item_ids                          # omitting it as dont feel like would need to access in future
-        # self.pairs = read the pairs from the item_ids # NO
+        # self.pairs = read the pairs from the item_ids     # NO
         # just call the methods from create_femmir_pairs in runtime, anyway they would be in cache memory 
         # during training
         if config["create_new_pairs"]:
@@ -67,47 +57,50 @@ class FemmirDataset(data.Dataset):
         print(f"DEBUG: {self.pairs[:5]}")  # preview first 5
 
     def __getitem__(self, index):
-        # query_id = self.item_ids[index]
 
-        # data = process_pair(self.training_graphs[index])    # basically just reads a json
+        # ced was generated from "gold" properties and used as label in simgnn
+        query_id, target_id, ced, pairs_modality = self.pairs[index]
 
-        # edges_1 = data["graph_1"] # + [[y, x] for x, y in data["graph_1"]]
-        # edges_2 = data["graph_2"] # + [[y, x] for x, y in data["graph_2"]]
+        # use graphs created from "noisy" properties for training and testing
+        query_data = load_simgnn_graph_json_by_id(config, query_id, self.split, noisy=True)
+        target_data = load_simgnn_graph_json_by_id(config, target_id, self.split, noisy=True)
 
-        # edges_1 = torch.from_numpy(np.array(edges_1, dtype=np.int64).T).type(torch.long)
-        # edges_2 = torch.from_numpy(np.array(edges_2, dtype=np.int64).T).type(torch.long)
+        edges_1 = query_data["graph"] # + [[y, x] for x, y in query_data["graph"]]
+        edges_2 = target_data["graph"] # + [[y, x] for x, y in target_data["graph"]]
 
-        # # this are single data, not batch, so 2D; Transpose should happen when u read batch data in .fit()
+        edges_1 = torch.from_numpy(np.array(edges_1, dtype=np.int64).T).type(torch.long)
+        edges_2 = torch.from_numpy(np.array(edges_2, dtype=np.int64).T).type(torch.long)
 
-        # #####
-        # # edges_1 = torch.Tensor(data["graph_1"]).type(torch.long)
-        # # edges_2 = torch.Tensor(data["graph_1"]).type(torch.long)
-        # ###
+        # this are single data, not batch, so 2D; Transpose should happen when u read batch data in .fit()
+
+        #####
+        # edges_1 = torch.Tensor(data["graph_1"]).type(torch.long)
+        # edges_2 = torch.Tensor(data["graph_1"]).type(torch.long)
+        ###
         
+        assert max(query_data["labels"] + target_data["labels"]) < len(self.global_labels)
 
-        # # features_1 = torch.FloatTensor(np.array(data["labels_1"]))
-        # # features_2 = torch.FloatTensor(np.array(data["labels_2"]))
-        # features_1 = torch.Tensor([self.global_labels[i] for i in data["labels_1"]]).long()
-        # features_2 = torch.Tensor([self.global_labels[i] for i in data["labels_2"]]).long()
+        # the next two lines are redundant now, as i already map to global_labels during creating simgnn graph
+        # features_1 = torch.Tensor([self.global_labels[i] for i in query_data["labels"]]).long()
+        # features_2 = torch.Tensor([self.global_labels[i] for i in target_data["labels"]]).long()
 
-        # # TODO: do 1-hot : DONE
-        # features_1 = F.one_hot(features_1, num_classes = len(self.global_labels)).float()
-        # features_2 = F.one_hot(features_2, num_classes = len(self.global_labels)).float()
+        features_1 = torch.tensor(query_data["labels"]).long()
+        features_2 = torch.tensor(target_data["labels"]).long()
 
-        # # print(torch.argmax(features_1, dim=1))      # prints the original labels array from 1-hot
-        # # print(torch.argmax(features_2, dim=1))
+        features_1 = F.one_hot(features_1, num_classes=len(self.global_labels)).float()
+        features_2 = F.one_hot(features_2, num_classes=len(self.global_labels)).float()
 
-        # # norm_ged = data["ged"] / (0.5 * (len(data["labels_1"]) + len(data["labels_2"])))
-        # # target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
-        
-        # target = torch.tensor([data["target"]]).float()
+        # create similarity score
+        norm_ged = ced / (0.5 * (len(query_data["labels"]) + len(target_data["labels"])))
+        target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
 
-        # return edges_1, edges_2, features_1, features_2, target # data["target"]
+        return edges_1, edges_2, features_1, features_2, target, {
+            self.pairs[index]
+        }
 
-        return self.pairs[index]
+        # return self.pairs[index]
 
     def __len__(self):
-        # return len(self.training_graphs)
         return len(self.pairs)    # each self.pairs item is a tuple (query-id, target-id, ced, (modq, modc))
 
 
@@ -688,5 +681,5 @@ if __name__ == "__main__":
     print(f"Size of full validation ids: {len(validids)}")
     print(f"Size of full test ids: {len(testids)}")
 
-    testset = FemmirDataset(trainids, None)
-    print(len(testset[0]))
+    testset = FemmirDataset(trainids, split="train")
+    print(testset[0])
