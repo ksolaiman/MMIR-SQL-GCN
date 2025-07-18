@@ -47,12 +47,12 @@ class FemmirDataset(data.Dataset):
         # self.global_labels = global_labels
         # self.number_of_labels = len(self.global_labels)
 
-        self.item_ids = item_ids
+        # self.item_ids = item_ids                          # omitting it as dont feel like would need to access in future
         # self.pairs = read the pairs from the item_ids # NO
         # just call the methods from create_femmir_pairs in runtime, anyway they would be in cache memory 
         # during training
         if config["create_new_pairs"]:
-            positive_pairs, negative_pairs = create_pairs_for_full_training_pool(5, True, config["random_seed"])  # 5 pos and 5 neg pairs, save=False, seed=42
+            positive_pairs, negative_pairs = create_pairs_for_full_training_pool(item_ids, 5, True, config["random_seed"])  # 5 pos and 5 neg pairs, save=False, seed=42
         else:
             pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
             positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"positive_pairs_by_queryid.pkl"))
