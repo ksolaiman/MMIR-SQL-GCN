@@ -491,14 +491,14 @@ def stratified_train_validation_split_by_modality(
         else:
             replace_flags = (False, True, True)
 
-        image_train, image_val = train_validation_split(sample(image_pool, SAMPLE_SIZE, replace_flags[0]), val_ratio)
-        video_train, video_val = train_validation_split(sample(video_pool, SAMPLE_SIZE, replace_flags[1]), val_ratio)
-        text_train, text_val = train_validation_split(sample(text_pool, SAMPLE_SIZE, replace_flags[2]), val_ratio)
+        image_train, image_val = train_validation_split(sample(image_pool, SAMPLE_SIZE, replace_flags[0]), val_ratio, random_seed)
+        video_train, video_val = train_validation_split(sample(video_pool, SAMPLE_SIZE, replace_flags[1]), val_ratio, random_seed)
+        text_train, text_val = train_validation_split(sample(text_pool, SAMPLE_SIZE, replace_flags[2]), val_ratio, random_seed)
 
     else:
-        image_train, image_val = train_validation_split(image_pool, val_ratio)
-        video_train, video_val = train_validation_split(video_pool, val_ratio)
-        text_train, text_val = train_validation_split(text_pool, val_ratio)
+        image_train, image_val = train_validation_split(image_pool, val_ratio, random_seed)
+        video_train, video_val = train_validation_split(video_pool, val_ratio, random_seed)
+        text_train, text_val = train_validation_split(text_pool, val_ratio, random_seed)
 
     combined_train = image_train + video_train + text_train
     combined_val = image_val + video_val + text_val
@@ -533,34 +533,55 @@ def k_fold_split(trainpool, k=5, random_seed=42):
 
 def stratified_k_fold_split_by_modality(
     image_pool, video_pool, text_pool,
-    k=5, random_seed=42
+    k=5, random_seed=42,
+    balanced=False,
+    undersample=True,
+    oversample=False,
+    SAMPLE_SIZE=None
 ):
     """
-    Stratified k-fold splitting maintaining modality ratios.
+    Stratified k-fold splitting with optional modality balancing.
     Splits each modality pool into k folds separately.
     Yields (train, validation, details) per fold.
     """
     np.random.seed(random_seed)
 
+    def sample(pool, size, replace):
+        return np.random.choice(pool, size=size, replace=replace).tolist()
+
     def make_folds(pool):
-        np.random.seed(random_seed)
         shuffled = np.random.permutation(pool)
         fold_size = len(shuffled) // k
-        folds = [shuffled[i*fold_size : (i+1)*fold_size].tolist() for i in range(k-1)]
-        folds.append(shuffled[(k-1)*fold_size:].tolist())
+        folds = [shuffled[i * fold_size: (i + 1) * fold_size].tolist() for i in range(k - 1)]
+        folds.append(shuffled[(k - 1) * fold_size:].tolist())
         return folds
 
+    # === Balance pools before fold splitting ===
+    if balanced:
+        if undersample:
+            SAMPLE_SIZE = min(len(image_pool), len(video_pool), len(text_pool)) if SAMPLE_SIZE is None else SAMPLE_SIZE
+            replace_flags = (False, False, False)
+        elif oversample:
+            SAMPLE_SIZE = max(len(image_pool), len(video_pool), len(text_pool)) if SAMPLE_SIZE is None else SAMPLE_SIZE
+            replace_flags = (False, True, True)
+        else:  # mixed
+            SAMPLE_SIZE = SAMPLE_SIZE or min(len(image_pool), len(video_pool), len(text_pool))
+            replace_flags = (False, True, True)
+
+        image_pool = sample(image_pool, SAMPLE_SIZE, replace_flags[0])
+        video_pool = sample(video_pool, SAMPLE_SIZE, replace_flags[1])
+        text_pool = sample(text_pool, SAMPLE_SIZE, replace_flags[2])
+
+    # === Perform fold splitting ===
     image_folds = make_folds(image_pool)
     video_folds = make_folds(video_pool)
     text_folds = make_folds(text_pool)
 
     for i in range(k):
-        # Validation fold
         image_val = image_folds[i]
         video_val = video_folds[i]
         text_val = text_folds[i]
 
-        # Training = all other folds
         image_train = sum([f for j, f in enumerate(image_folds) if j != i], [])
         video_train = sum([f for j, f in enumerate(video_folds) if j != i], [])
         text_train = sum([f for j, f in enumerate(text_folds) if j != i], [])
@@ -576,6 +597,7 @@ def stratified_k_fold_split_by_modality(
             "text_train": text_train,
             "text_val": text_val
         }
+
 
 
 # shows usage
