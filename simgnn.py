@@ -21,9 +21,10 @@ from create_femmir_pairs import create_pairs_for_full_training_pool
 from itertools import chain
 from create_harg import load_simgnn_graph_json_by_id
 
-
-# create a new FemmIRPairsDataset(FemmirDataset). # no need
-
+# ----------------------------------------------------------
+# Dataset of <query, target> PAIRS
+# created from a list of item-ids
+# ----------------------------------------------------------
 class FemmirDataset(data.Dataset):
     def __init__(self, item_ids, noisy_global_labels=None, split="train"):
         # image_dir, imagetestset, input_transform = None, mgid2predicted_properties_dict=None, label=None, type='image'
@@ -33,7 +34,7 @@ class FemmirDataset(data.Dataset):
         with open(os.path.join(graph_parent_dir, "label_vocab.json"), "r") as f:
             noisy_global_labels = json.load(f)
 
-        self.split = "train"
+        self.split = split
         self.global_labels = noisy_global_labels
         self.number_of_labels = len(self.global_labels)
 
@@ -42,9 +43,26 @@ class FemmirDataset(data.Dataset):
         # just call the methods from create_femmir_pairs in runtime, anyway they would be in cache memory 
         # during training
         if config["create_new_pairs"]:
-            positive_pairs, negative_pairs = create_pairs_for_full_training_pool(item_ids, 5, True, config["random_seed"])  # 5 pos and 5 neg pairs, save=False, seed=42
+            # Load distance matrix and mappings
+            with open(os.path.join(config["dataset_dir"], "dist_matrices", split if split=="test" else "train", "ground_distance_matrix.pkl"), "rb") as f:
+                distance_matrix = pickle.load(f)
+
+            with open(os.path.join(config["dataset_dir"], "dist_matrices", split if split=="test" else "train", "item2idx.pkl"), "rb") as f:
+                item2idx = pickle.load(f)
+
+            with open(os.path.join(config["dataset_dir"], "dist_matrices", split if split=="test" else "train", "item2modality.pkl"), "rb") as f:
+                item2modality = pickle.load(f)
+            positive_pairs, negative_pairs = create_pairs_for_full_training_pool(item_ids, 
+                                                                                 item2idx, 
+                                                                                 item2modality, 
+                                                                                 distance_matrix, 
+                                                                                 NOS_mod=5, 
+                                                                                 save_pairs=True, 
+                                                                                 split=self.split, 
+                                                                                 RANDOM_SEED=config["random_seed"]
+                                                                                 )  # 5 pos and 5 neg pairs, save=False, seed=42
         else:
-            pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
+            pair_dir = os.path.join(config["dataset_dir"], config.get("pair_save_dir"), self.split)
             positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"positive_pairs_by_queryid.pkl"))
             negative_pairs = utils.load_pickle(os.path.join(pair_dir, f"negative_pairs_by_queryid.pkl"))
 
@@ -654,17 +672,6 @@ config = load_config()
 DATASET_DIR = config["dataset_dir"]
 
 if __name__ == "__main__":
-    # train_data_dir = "/Users/ksolaima/SALVI/CodeRepo/SIGMOD-paper-code/MMIR-SQL-GCN-master-Nov-19-23/new-run/simgnn-dataset/train_pairs/"
-    # with open("selfObj.pkl", "rb") as f:
-    #         obj = pickle.load(f)
-    #         global_labels = obj.global_labels
-    #         number_of_labels = len(global_labels)
-             
-    # data_set = FemmirDataset(train_data_dir, global_labels)
-    # print(data_set[0])
-    # data_loader = DataLoader(dataset=data_set, num_workers=args.workers, batch_size=args.batch_size, shuffle=False)
-    
-
     # data_set = CubTextDataset(data_dir, test_list, split)
     # data_loader = DataLoader(dataset=data_set, num_workers=args.workers, batch_size=args.batch_size, shuffle=False)
     
@@ -681,5 +688,11 @@ if __name__ == "__main__":
     print(f"Size of full validation ids: {len(validids)}")
     print(f"Size of full test ids: {len(testids)}")
 
-    testset = FemmirDataset(trainids, split="train")
-    print(testset[0])
+    trainset = FemmirDataset(trainids, split="train")
+    validset = FemmirDataset(validids, split="valid")
+    testset = FemmirDataset(testids, split="test")
+    print(trainset[0])
+
+    train_loader = DataLoader(dataset=trainset, num_workers=2, batch_size=128, shuffle=False)
+    print(train_loader)
+    
