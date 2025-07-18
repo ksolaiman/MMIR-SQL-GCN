@@ -17,6 +17,99 @@ from torch.utils.data import DataLoader
 # from layers import AttentionModule, TenorNetworkModule
 # from utils import process_pair, calculate_loss, calculate_normalized_ged
 
+from create_femmir_pairs import create_pairs_for_full_training_pool
+from itertools import chain
+
+
+# create a new FemmIRPairsDataset(FemmirDataset). # no need
+
+class FemmirDataset(data.Dataset):
+    def __init__(self, item_ids, global_labels):
+        # image_dir, imagetestset, input_transform = None, mgid2predicted_properties_dict=None, label=None, type='image'
+        super(FemmirDataset, self).__init__()
+
+        # ## TODO: initial_label_enum : DONE w/ saved file
+        # self.training_graphs = glob.glob(training_graphs + "*.json")
+        # # self.val_graphs = glob.glob(self.args.validation_graphs + "*.json")
+        # # self.testing_graphs = glob.glob(self.args.testing_graphs + "*.json")
+        # # graph_pairs = self.training_graphs + self.testing_graphs + self.val_graphs
+
+        # with open("selfObj.pkl", "rb") as f:
+        #      obj = pickle.load(f)
+        #     #  self.training_graphs = obj.training_graphs
+        #     #  self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
+        #     #  self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
+        #      self.global_labels = obj.global_labels
+        #      self.number_of_labels = len(self.global_labels)
+        #     #  print(self.number_of_labels)
+
+        # self.training_graphs = training_graphs            # called pairs now
+        # self.global_labels = global_labels
+        # self.number_of_labels = len(self.global_labels)
+
+        self.item_ids = item_ids
+        # self.pairs = read the pairs from the item_ids # NO
+        # just call the methods from create_femmir_pairs in runtime, anyway they would be in cache memory 
+        # during training
+        if config["create_new_pairs"]:
+            positive_pairs, negative_pairs = create_pairs_for_full_training_pool(5, True, config["random_seed"])  # 5 pos and 5 neg pairs, save=False, seed=42
+        else:
+            pair_dir = os.path.join(DATASET_DIR, config.get("pair_save_dir"))
+            positive_pairs = utils.load_pickle(os.path.join(pair_dir, f"positive_pairs_by_queryid.pkl"))
+            negative_pairs = utils.load_pickle(os.path.join(pair_dir, f"negative_pairs_by_queryid.pkl"))
+
+        self.pairs = list(chain.from_iterable(positive_pairs.values())) \
+                                                + list(chain.from_iterable(negative_pairs.values()))
+        
+        # DEBUG
+        print(f"DEBUG: {self.pairs[0]}")    # each self.pairs item is a tuple (query-id, target-id, ced, (modq, modc))
+        print(f"DEBUG: {type(self.pairs), len(self.pairs)}")
+        print(f"DEBUG: {self.pairs[:5]}")  # preview first 5
+
+    def __getitem__(self, index):
+        # query_id = self.item_ids[index]
+
+        # data = process_pair(self.training_graphs[index])    # basically just reads a json
+
+        # edges_1 = data["graph_1"] # + [[y, x] for x, y in data["graph_1"]]
+        # edges_2 = data["graph_2"] # + [[y, x] for x, y in data["graph_2"]]
+
+        # edges_1 = torch.from_numpy(np.array(edges_1, dtype=np.int64).T).type(torch.long)
+        # edges_2 = torch.from_numpy(np.array(edges_2, dtype=np.int64).T).type(torch.long)
+
+        # # this are single data, not batch, so 2D; Transpose should happen when u read batch data in .fit()
+
+        # #####
+        # # edges_1 = torch.Tensor(data["graph_1"]).type(torch.long)
+        # # edges_2 = torch.Tensor(data["graph_1"]).type(torch.long)
+        # ###
+        
+
+        # # features_1 = torch.FloatTensor(np.array(data["labels_1"]))
+        # # features_2 = torch.FloatTensor(np.array(data["labels_2"]))
+        # features_1 = torch.Tensor([self.global_labels[i] for i in data["labels_1"]]).long()
+        # features_2 = torch.Tensor([self.global_labels[i] for i in data["labels_2"]]).long()
+
+        # # TODO: do 1-hot : DONE
+        # features_1 = F.one_hot(features_1, num_classes = len(self.global_labels)).float()
+        # features_2 = F.one_hot(features_2, num_classes = len(self.global_labels)).float()
+
+        # # print(torch.argmax(features_1, dim=1))      # prints the original labels array from 1-hot
+        # # print(torch.argmax(features_2, dim=1))
+
+        # # norm_ged = data["ged"] / (0.5 * (len(data["labels_1"]) + len(data["labels_2"])))
+        # # target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
+        
+        # target = torch.tensor([data["target"]]).float()
+
+        # return edges_1, edges_2, features_1, features_2, target # data["target"]
+
+        return self.pairs[index]
+
+    def __len__(self):
+        # return len(self.training_graphs)
+        return len(self.pairs)    # each self.pairs item is a tuple (query-id, target-id, ced, (modq, modc))
+
 
 class SimGNN(torch.nn.Module):
     """
@@ -123,69 +216,7 @@ class SimGNN(torch.nn.Module):
         scores = torch.nn.functional.relu(self.fully_connected_first(scores))
         score = torch.sigmoid(self.scoring_layer(scores))
         return score
-
-class FemmirDataset(data.Dataset):
-    def __init__(self, training_graphs, global_labels):
-        # image_dir, imagetestset, input_transform = None, mgid2predicted_properties_dict=None, label=None, type='image'
-        super(FemmirDataset, self).__init__()
-
-        # ## TODO: initial_label_enum : DONE w/ saved file
-        # self.training_graphs = glob.glob(training_graphs + "*.json")
-        # # self.val_graphs = glob.glob(self.args.validation_graphs + "*.json")
-        # # self.testing_graphs = glob.glob(self.args.testing_graphs + "*.json")
-        # # graph_pairs = self.training_graphs + self.testing_graphs + self.val_graphs
-
-        # with open("selfObj.pkl", "rb") as f:
-        #      obj = pickle.load(f)
-        #     #  self.training_graphs = obj.training_graphs
-        #     #  self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
-        #     #  self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
-        #      self.global_labels = obj.global_labels
-        #      self.number_of_labels = len(self.global_labels)
-        #     #  print(self.number_of_labels)
-
-        self.training_graphs = training_graphs
-        self.global_labels = global_labels
-        self.number_of_labels = len(self.global_labels)
-
-    def __getitem__(self, index):
-        data = process_pair(self.training_graphs[index])
-
-        edges_1 = data["graph_1"] # + [[y, x] for x, y in data["graph_1"]]
-        edges_2 = data["graph_2"] # + [[y, x] for x, y in data["graph_2"]]
-
-        edges_1 = torch.from_numpy(np.array(edges_1, dtype=np.int64).T).type(torch.long)
-        edges_2 = torch.from_numpy(np.array(edges_2, dtype=np.int64).T).type(torch.long)
-
-        # this are single data, not batch, so 2D; Transpose should happen when u read batch data in .fit()
-
-        #####
-        # edges_1 = torch.Tensor(data["graph_1"]).type(torch.long)
-        # edges_2 = torch.Tensor(data["graph_1"]).type(torch.long)
-        ###
-        
-
-        # features_1 = torch.FloatTensor(np.array(data["labels_1"]))
-        # features_2 = torch.FloatTensor(np.array(data["labels_2"]))
-        features_1 = torch.Tensor([self.global_labels[i] for i in data["labels_1"]]).long()
-        features_2 = torch.Tensor([self.global_labels[i] for i in data["labels_2"]]).long()
-
-        # TODO: do 1-hot : DONE
-        features_1 = F.one_hot(features_1, num_classes = len(self.global_labels)).float()
-        features_2 = F.one_hot(features_2, num_classes = len(self.global_labels)).float()
-
-        # print(torch.argmax(features_1, dim=1))      # prints the original labels array from 1-hot
-        # print(torch.argmax(features_2, dim=1))
-
-        # norm_ged = data["ged"] / (0.5 * (len(data["labels_1"]) + len(data["labels_2"])))
-        # target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
-        
-        target = torch.tensor([data["target"]]).float()
-
-        return edges_1, edges_2, features_1, features_2, target # data["target"]
-
-    def __len__(self):
-        return len(self.training_graphs)
+    
 
 class SimGNNTrainer(object):
     """
@@ -568,7 +599,7 @@ class SimGNNTrainer(object):
 
 
 
-def prepare_full_valid_and_undersample_balanced_train_data(all_data):
+def prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed=42):
 
     # Access modality-specific train pools
     image_pool = all_data['image_trainpool']
@@ -579,7 +610,7 @@ def prepare_full_valid_and_undersample_balanced_train_data(all_data):
     train_pool = all_data['trainpool']
     testset = all_data['testset']
 
-    full_train_ids, full_val_ids = train_validation_split(train_pool, val_ratio=0.2, random_seed=42)
+    full_train_ids, full_val_ids = train_validation_split(train_pool, val_ratio=0.2, random_seed=random_seed)
     full_val_set = set(full_val_ids)
 
     # Next: remove validation IDs from subpools
@@ -596,7 +627,7 @@ def prepare_full_valid_and_undersample_balanced_train_data(all_data):
 
     train_ids, val_ids, details = stratified_train_validation_split_by_modality(image_pool, video_pool, text_pool,
                                                                         balanced=True, undersample=True, 
-                                                                        val_ratio=0, random_seed=42)
+                                                                        val_ratio=0, random_seed=random_seed)
     
 
     # print(f"Size of balanced training data: {len(train_ids)}")
@@ -627,6 +658,7 @@ from utils import load_config
 from set_train_test_data_and_distance_matrix import *
 
 config = load_config()
+DATASET_DIR = config["dataset_dir"]
 
 if __name__ == "__main__":
     # train_data_dir = "/Users/ksolaima/SALVI/CodeRepo/SIGMOD-paper-code/MMIR-SQL-GCN-master-Nov-19-23/new-run/simgnn-dataset/train_pairs/"
@@ -650,8 +682,11 @@ if __name__ == "__main__":
     # PREPARE data and use the following itemsets to create future <query, target> pairs for SIMGNN
     # pass each one of them to FemmIRDataset Class now to create the pairs
     # ------------------------------------------------------------------------------------------------
-    trainids, validids, testids = prepare_full_valid_and_undersample_balanced_train_data(all_data)  # 80-20-20 split
+    trainids, validids, testids = prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed=config["random_seed"])  # 80-20-20 split
 
     print(f"Size of balanced training ids: {len(trainids)}")
     print(f"Size of full validation ids: {len(validids)}")
     print(f"Size of full test ids: {len(testids)}")
+
+    testset = FemmirDataset(trainids, None)
+    print(len(testset[0]))
