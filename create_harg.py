@@ -166,6 +166,26 @@ def save_simgnn_graph_json(graph_dict, output_path, noisy=None):
     with open(output_path, "w") as f:
         json.dump(graph_dict, f, indent=2)
 
+def load_simgnn_graph_json_by_id(config, item_id, split_mode="train", noisy=False):
+    """
+    Loads a SimGNN-format graph JSON file given the item ID.
+
+    Args:
+        item_id (int or str): ID of the item whose graph is to be loaded.
+        graph_dir (str): created from other 3 argument
+
+    Returns:
+        dict: Parsed graph dictionary with keys like 'graph', 'labels', 'edge_types'.
+    """
+    graph_parent_dir = os.path.join(config["dataset_dir"], config.get("simgnn_graph_dir"),
+                             "noisy" if noisy else "gold")
+    
+    graph_dir = os.path.join(graph_parent_dir, split_mode)
+    file_path = os.path.join(graph_dir, f"{item_id}.json")
+    with open(file_path, "r") as f:
+        graph_dict = json.load(f)
+    return graph_dict
+
 # === Main Phases ===
 
 def process_phase_train(config):
