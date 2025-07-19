@@ -14,6 +14,10 @@ import torch.nn.functional as F
 import torch.utils.data as data
 from torch.utils.data import DataLoader
 from param_parser import parameter_parser
+from sklearn.metrics import average_precision_score
+from collections import defaultdict
+import math
+
 
 from layers import AttentionModule, TenorNetworkModule
 # from utils import process_pair, calculate_loss, calculate_normalized_ged
@@ -114,7 +118,12 @@ class FemmirDataset(data.Dataset):
         norm_ged = ced / (0.5 * (len(query_data["labels"]) + len(target_data["labels"])))
         target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
 
-        return edges_1, edges_2, features_1, features_2, target #, {self.pairs[index]}
+        return edges_1, edges_2, features_1, features_2, target, {
+            "query_id": query_id,
+            "target_id": target_id,
+            "ced": ced,
+            "modality": pairs_modality
+        }
 
         # return self.pairs[index]
 
@@ -285,6 +294,16 @@ class SimGNNTrainer(object):
                                            shuffle=True, drop_last=True)
         self.validation_dataloader = DataLoader(dataset=self.validset, num_workers=args.workers, batch_size=args.batch_size, \
                                            shuffle=True, drop_last=True)
+        
+
+        self.test_dataloader = DataLoader(
+            dataset=self.testset, 
+            num_workers=args.workers, 
+            batch_size=args.batch_size, 
+            shuffle=False,                  # For consistent evaluation; No shuffling in test data
+            drop_last=False                  # Don’t drop any test data
+        )       
+                                           
 
         self.setup_model()
         
@@ -420,7 +439,7 @@ class SimGNNTrainer(object):
         self.optimizer.zero_grad()
         losses = 0
         
-        (edges_1, edges_2, features_1, features_2, target) = batch
+        (edges_1, edges_2, features_1, features_2, target, _) = batch
 
         target = target.to(self.device)
 
@@ -533,85 +552,114 @@ class SimGNNTrainer(object):
         """
         Scoring on the test set.
         """
-        print("\n\nModel evaluation.\n")
-        # model = TheModelClass(*args, **kwargs)
-        # print(self.model)
+        print("\n\n[INFO] Starting model evaluation...\n")
         self.model.load_state_dict(torch.load(self.args.load_path))
         self.model.eval()
-        self.scores = []
-        self.ground_truth = []
         
         predictions = []
         targets = []
+        no_of_nodes_in_pairs = []
         
-        from sklearn.metrics import average_precision_score
-        no_of_nodes_in_pairs = list()
-        for graph_pair in tqdm(self.testing_graphs):
-            data = process_pair(graph_pair)
-            self.ground_truth.append(calculate_normalized_ged(data))
-            no_of_nodes_in_pairs.append(len(data["labels_1"])+len(data["labels_2"]))
-            data = self.transfer_to_torch(data)
-            target = data["target"]
-            prediction = self.model(data)
-            targets.append(target[0].item())
-            predictions.append(prediction[0][0].item())
-            self.scores.append(calculate_loss(prediction, target))
+        with torch.no_grad():
+            for batch in tqdm(self.test_dataloader):
+                (edges_1, edges_2, features_1, features_2, target, _) = batch
 
-        self.print_evaluation()
+                target_batch = target.to(self.device)
 
-        targets = [1 if math.ceil(-1*math.log(item)*no_of_nodes_in_pairs[idx]) <= 2 else 0 for idx, item in enumerate(targets)] # calculates the number of total relevant items in dataset
-        predictions = [1 if math.ceil(-1*math.log(item)*no_of_nodes_in_pairs[idx]) <= 2 else 0 for idx, item in enumerate(predictions)] # calculates the number of total relevant items obtained
+                # THe reshaping of edges
+                edges_1 = edges_1.reshape(2, -1, edges_1.size(0)) # first index is bvatch_sz, 128++, (128, 2, 8)
+                edges_2 = edges_2.reshape(2, -1,  edges_2.size(0)) # torch.transpose(edges_2, 0, 2)
+                    
+                edge_index_1 = edges_1.to(self.device)
+                edge_index_2 = edges_2.to(self.device)
 
-        average_precision = average_precision_score(targets, predictions)
+                features_1 = features_1.to(self.device)
+                features_2 = features_2.to(self.device)
 
-        print('Average precision-recall score: {0:0.2f}'.format(
-              average_precision))
-        
-        from sklearn.metrics import precision_recall_fscore_support
-        result = precision_recall_fscore_support(targets, predictions, beta=1, average='binary')
-        print(result)
+                num_nodes = features_1.shape[1] + features_2.shape[1]
+                no_of_nodes_in_pairs.extend([num_nodes] * target.shape[0])
 
-    def score_for_map_rough(self):
+                ## can't do self.model(data)[0] anymore, that gets just first sample
+                pred = self.model(edge_index_1, edge_index_2, features_1, features_2) #[0]
+
+                predictions.extend(pred.view(-1).tolist())
+                targets.extend(target_batch.view(-1).tolist())
+
+
+        # Map back to binary relevance
+        bin_targets = [1 if math.ceil(-1 * math.log(item) * no_of_nodes_in_pairs[idx]) <= 3 else 0
+                    for idx, item in enumerate(targets)]
+        bin_preds = [1 if math.ceil(-1 * math.log(item) * no_of_nodes_in_pairs[idx]) <= 3 else 0
+                    for idx, item in enumerate(predictions)]
+
+        from sklearn.metrics import average_precision_score, precision_recall_fscore_support
+
+        ap = average_precision_score(bin_targets, bin_preds)
+        precision, recall, f1, _ = precision_recall_fscore_support(bin_targets, bin_preds, beta=1, average='binary')
+
+        print(f"[RESULT] Avg Precision-Recall Score: {ap:.4f}")
+        print(f"[RESULT] Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+
+    
+    def score_with_map(self):
         """
-        Scoring on the test set.
+        Scoring for ranking-based evaluation using MAP.
         """
-        # print("\n\n Single data Model evaluation.\n")
+        print("\n[INFO] Starting model MAP evaluation...\n")
         self.model.load_state_dict(torch.load(self.args.load_path))
         self.model.eval()
-        self.scores = []
-        self.ground_truth = []
 
-        predictions = []
-        targets = []
+        # Store predictions by query
+        results_by_query = defaultdict(list)
 
-        from sklearn.metrics import average_precision_score
-        no_of_nodes_in_pairs = list()
-        for graph_pair in tqdm(self.testing_graphs):
-            # data = process_pair(graph_pair)
-            self.ground_truth.append(calculate_normalized_ged(data))
-            no_of_nodes_in_pairs.append(len(data["labels_1"]) + len(data["labels_2"]))
-            data = self.transfer_to_torch(data)
-            target = data["target_gt"]
-            prediction = self.model(data)
-            targets.append(target[0].item())
-            predictions.append(prediction[0][0].item())
-            self.scores.append(calculate_loss(prediction, target))
+        no_of_nodes_in_pairs = []
 
-        self.print_evaluation()
+        with torch.no_grad():
+            for batch in tqdm(self.test_dataloader):
+                (edges_1, edges_2, features_1, features_2, target, meta_info) = batch 
 
-        targets = [1 if math.ceil(-1 * math.log(item) * no_of_nodes_in_pairs[idx]) <= 2 else 0 for idx, item in
-                   enumerate(targets)]  # calculates the number of total relevant items in dataset
-        predictions = [1 if math.ceil(-1 * math.log(item) * no_of_nodes_in_pairs[idx]) <= 2 else 0 for idx, item in
-                       enumerate(predictions)]  # calculates the number of total relevant items obtained
+                target_batch = target.to(self.device)
+                edge_index_1 = edges_1.reshape(2, -1, edges_1.size(0)).to(self.device)
+                edge_index_2 = edges_2.reshape(2, -1, edges_2.size(0)).to(self.device)
 
-        average_precision = average_precision_score(targets, predictions)
+                features_1 = features_1.to(self.device)
+                features_2 = features_2.to(self.device)
 
-        print('Average precision-recall score: {0:0.2f}'.format(
-            average_precision))
+                pred = self.model(edge_index_1, edge_index_2, features_1, features_2)  # shape: [batch, 1]
 
-        from sklearn.metrics import precision_recall_fscore_support
-        result = precision_recall_fscore_support(targets, predictions, beta=1, average='binary')
-        print(result)
+                # num_nodes = features_1.shape[1] + features_2.shape[1]
+                # no_of_nodes_in_pairs.extend([num_nodes] * target.shape[0])
+
+
+                for b in range(len(pred)):
+                    # Compute number of nodes in this specific pair
+                    num_nodes = features_1[b].shape[0] + features_2[b].shape[0]
+                    no_of_nodes_in_pairs.append(num_nodes)
+
+                    sim_score = pred[b].item()
+                    sim_score = math.ceil(-1 * math.log(sim_score) * num_nodes)
+                    sim_score = int(sim_score <= 3.0)
+
+                    is_relevant = int(target_batch[b] <= 3.0)  # define relevance
+                    results_by_query[meta_info["query_id"][b]].append((sim_score, is_relevant))
+
+        # Now compute MAP across all queries
+        ap_scores = []
+        for query_id, preds in results_by_query.items():
+            preds.sort(key=lambda x: x[0], reverse=True)  # sort by predicted sim (descending)
+
+            y_true = [rel for _, rel in preds]
+            y_score = [score for score, _ in preds]
+
+            if sum(y_true) == 0:
+                continue  # skip queries with no relevant items
+
+            ap = average_precision_score(y_true, y_score)
+            ap_scores.append(ap)
+
+        mean_ap = sum(ap_scores) / len(ap_scores)
+        print(f"\n[RESULT] Mean Average Precision (MAP): {mean_ap:.4f}")
+
 
     def print_evaluation(self):
         """
@@ -623,7 +671,7 @@ class SimGNNTrainer(object):
         print("\nBaseline error: " +str(round(base_error, 5))+".")
         print("\nModel test error: " +str(round(model_error, 5))+".")
 
-
+    
 
 def prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed=42):
 
@@ -719,4 +767,4 @@ if __name__ == "__main__":
     if not args.evaluate_only:
         trainer.fit()
     else:
-        trainer.score()
+        trainer.score_with_map()
