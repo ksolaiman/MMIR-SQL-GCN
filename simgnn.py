@@ -13,13 +13,15 @@ import pickle
 import torch.nn.functional as F
 import torch.utils.data as data
 from torch.utils.data import DataLoader
+from param_parser import parameter_parser
 
-# from layers import AttentionModule, TenorNetworkModule
+from layers import AttentionModule, TenorNetworkModule
 # from utils import process_pair, calculate_loss, calculate_normalized_ged
 
 from create_femmir_pairs import create_pairs_for_full_training_pool
 from itertools import chain
 from create_harg import load_simgnn_graph_json_by_id
+from utils import tab_printer
 
 # ----------------------------------------------------------
 # Dataset of <query, target> PAIRS
@@ -80,8 +82,8 @@ class FemmirDataset(data.Dataset):
         query_id, target_id, ced, pairs_modality = self.pairs[index]
 
         # use graphs created from "noisy" properties for training and testing
-        query_data = load_simgnn_graph_json_by_id(config, query_id, self.split, noisy=True)
-        target_data = load_simgnn_graph_json_by_id(config, target_id, self.split, noisy=True)
+        query_data = load_simgnn_graph_json_by_id(config, query_id, self.split if self.split != "valid" else "train", noisy=True)
+        target_data = load_simgnn_graph_json_by_id(config, target_id, self.split if self.split != "valid" else "train", noisy=True)
 
         edges_1 = query_data["graph"] # + [[y, x] for x, y in query_data["graph"]]
         edges_2 = target_data["graph"] # + [[y, x] for x, y in target_data["graph"]]
@@ -112,9 +114,7 @@ class FemmirDataset(data.Dataset):
         norm_ged = ced / (0.5 * (len(query_data["labels"]) + len(target_data["labels"])))
         target = torch.from_numpy(np.exp(-norm_ged).reshape(1, 1)).view(-1).float()
 
-        return edges_1, edges_2, features_1, features_2, target, {
-            self.pairs[index]
-        }
+        return edges_1, edges_2, features_1, features_2, target #, {self.pairs[index]}
 
         # return self.pairs[index]
 
@@ -237,38 +237,54 @@ class SimGNNTrainer(object):
         """
         :param args: Arguments object.
         """
-        # with open("selfObj.pkl", "rb") as f:
-        #      obj = pickle.load(f)
-        #      self.training_graphs = obj.training_graphs
-        #      self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
-        #      self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
-        #      self.global_labels = obj.global_labels
-        #      self.number_of_labels = len(self.global_labels)
-        #      print(self.number_of_labels)
 
         self.args = args
         # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
         # self.initial_label_enumeration()
-        self.training_graphs = glob.glob(self.args.training_graphs + "*.json")
-        self.val_graphs = glob.glob(self.args.validation_graphs + "*.json")
-        with open("selfObj.pkl", "rb") as f:
-             obj = pickle.load(f)
-        #      self.training_graphs = obj.training_graphs
-        #      self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
-        #      self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
-             self.global_labels = obj.global_labels
-             self.number_of_labels = len(self.global_labels)
+        # self.training_graphs = glob.glob(self.args.training_graphs + "*.json")
+        # self.val_graphs = glob.glob(self.args.validation_graphs + "*.json")
+        # with open("selfObj.pkl", "rb") as f:
+        #      obj = pickle.load(f)
+        # #      self.training_graphs = obj.training_graphs
+        # #      self.val_graphs = obj.val_graphs # glob.glob(self.args.validation_graphs + "*.json")
+        # #      self.testing_graphs = obj.testing_graphs # glob.glob(self.args.testing_graphs + "*.json")
+        #      self.global_labels = obj.global_labels
+        #      self.number_of_labels = len(self.global_labels)
         
 
-        self.training_dataset = FemmirDataset(self.training_graphs, self.global_labels)
-        self.train_dataloader = DataLoader(dataset=self.training_dataset, num_workers=args.workers, batch_size=args.batch_size, \
-            shuffle=False, drop_last=True) # last batch may be < 128/intended sz, drop it then, to avoid calc error in future
+        # self.training_dataset = FemmirDataset(self.training_graphs, self.global_labels)
+        # self.train_dataloader = DataLoader(dataset=self.training_dataset, num_workers=args.workers, batch_size=args.batch_size, \
+        #     shuffle=False, drop_last=True) # last batch may be < 128/intended sz, drop it then, to avoid calc error in future
 
-        self.validation_dataset = FemmirDataset(self.val_graphs, self.global_labels)
-        self.validation_dataloader = DataLoader(dataset=self.validation_dataset, num_workers=args.workers, batch_size=args.batch_size, \
-            shuffle=False, drop_last=True)
+        # self.validation_dataset = FemmirDataset(self.val_graphs, self.global_labels)
+        # self.validation_dataloader = DataLoader(dataset=self.validation_dataset, num_workers=args.workers, batch_size=args.batch_size, \
+        #     shuffle=False, drop_last=True)
+
+        # Load everything once
+        all_data = load_all_splits(config.get('dataset_dir'))
+        
+        # ------------------------------------------------------------------------------------------------
+        # PREPARE data and use the following itemsets to create future <query, target> pairs for SIMGNN
+        # pass each one of them to FemmIRDataset Class now to create the pairs
+        # ------------------------------------------------------------------------------------------------
+        trainids, validids, testids = prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed=config["random_seed"])  # 80-20-20 split
+
+        self.trainset = FemmirDataset(trainids, split="train")
+        self.validset = FemmirDataset(validids, split="valid")
+        self.testset = FemmirDataset(testids, split="test")
+
+        self.global_labels = self.trainset.global_labels            # already have <UNK> to deal with unknown node-labels in valid and test
+        self.number_of_labels = len(self.global_labels)
+
+        print(self.trainset[0])
+
+        # shuffle the data to uncluster to same item-id
+        self.train_dataloader = DataLoader(dataset=self.trainset, num_workers=args.workers, batch_size=args.batch_size, \
+                                           shuffle=True, drop_last=True)
+        self.validation_dataloader = DataLoader(dataset=self.validset, num_workers=args.workers, batch_size=args.batch_size, \
+                                           shuffle=True, drop_last=True)
 
         self.setup_model()
         
@@ -671,9 +687,7 @@ from set_train_test_data_and_distance_matrix import *
 config = load_config()
 DATASET_DIR = config["dataset_dir"]
 
-if __name__ == "__main__":
-    # data_set = CubTextDataset(data_dir, test_list, split)
-    # data_loader = DataLoader(dataset=data_set, num_workers=args.workers, batch_size=args.batch_size, shuffle=False)
+def usage():
     
     # Load everything once
     all_data = load_all_splits(config.get('dataset_dir'))
@@ -696,3 +710,14 @@ if __name__ == "__main__":
     train_loader = DataLoader(dataset=trainset, num_workers=2, batch_size=128, shuffle=False)
     print(train_loader)
     
+    # data_set = CubTextDataset(data_dir, test_list, split)
+    # data_loader = DataLoader(dataset=data_set, num_workers=args.workers, batch_size=args.batch_size, shuffle=False)
+
+if __name__ == "__main__":
+    args = parameter_parser()
+    tab_printer(args)
+    trainer = SimGNNTrainer(args)
+    if not args.evaluate_only:
+        trainer.fit()
+    else:
+        trainer.score()
