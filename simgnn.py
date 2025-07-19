@@ -522,11 +522,10 @@ class SimGNNTrainer(object):
         from datetime import datetime
         now = datetime.now()
         dt_string = now.strftime("%d-%m-%Y_%H:%M:%S")
-        # with open('./epoch_'+str(epoch)+'_'+'_'+str(best_val_loss)+'_'+dt_string+'.pt', "wb+") as mf:
-        #     torch.save(best_model.state_dict(), mf)
-        with open(self.args.save_path +'epoch_'+str(epoch)+'_'+'_'+str(best_val_loss)+'_'+dt_string+'.pt', "wb+") as mf:
+        model_save_dir = os.path.join('models')
+        os.makedirs(model_save_dir, exist_ok=True)
+        with open(os.path.join('models','epoch_'+str(epoch)+'_'+'_'+str(best_val_loss)+'_'+dt_string+'.pt'), "wb+") as mf:
             torch.save(best_model.state_dict(), mf)
-            # torch.save(best_model, mf)
         self.model = best_model
 
 
@@ -637,7 +636,7 @@ def prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed
     train_pool = all_data['trainpool']
     testset = all_data['testset']
 
-    full_train_ids, full_val_ids = train_validation_split(train_pool, val_ratio=0.2, random_seed=random_seed)
+    full_train_ids, full_val_ids = train_validation_split(train_pool, val_ratio=0.2, random_seed=random_seed)       # change to do k-fold
     full_val_set = set(full_val_ids)
 
     # Next: remove validation IDs from subpools
@@ -654,7 +653,7 @@ def prepare_full_valid_and_undersample_balanced_train_data(all_data, random_seed
 
     train_ids, val_ids, details = stratified_train_validation_split_by_modality(image_pool, video_pool, text_pool,
                                                                         balanced=True, undersample=True, 
-                                                                        val_ratio=0, random_seed=random_seed)
+                                                                        val_ratio=0, random_seed=random_seed)       # change to do k-fold
     
 
     # print(f"Size of balanced training data: {len(train_ids)}")
